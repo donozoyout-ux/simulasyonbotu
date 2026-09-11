@@ -13,7 +13,7 @@ class YahooMarketDataProvider(MarketDataProvider):
 
     name = "yahoo"
     price_adjustment = "provider_chart_raw_unverified"
-    intervals = {"15m": ("15m", "60d"), "1h": ("60m", "730d"), "1d": ("1d", "5y")}
+    intervals = {"5m": ("5m", "60d"), "15m": ("15m", "60d"), "1h": ("60m", "730d"), "1d": ("1d", "5y")}
 
     def get_symbols(self) -> list[str]:
         return BIST100_SYMBOLS.copy()
