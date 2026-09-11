@@ -10,10 +10,21 @@ class AppSettings(BaseSettings):
     api_prefix: str = "/api"
     database_url: str = "sqlite:///./bist_simulator.db"
     data_mode: str = "live"
-    market_data_provider: str = "yahoo"
+
+    # Market data
+    market_data_provider: str = "hybrid"
     eodhd_api_token: str | None = None
     twelve_data_api_key: str | None = None
+    hybrid_price_tolerance_pct: Decimal = Decimal("0.015")
     allow_mock_fallback: bool = False
+
+    # AI analyst
+    ai_enabled: bool = False
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-5.6-luna"
+    ai_min_score: int = 70
+    ai_timeout_seconds: int = 25
+
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:3000"
     frontend_url: str = "http://localhost:3000"
