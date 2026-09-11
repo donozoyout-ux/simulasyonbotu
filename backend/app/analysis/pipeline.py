@@ -51,7 +51,7 @@ def analyze_frames(symbol:str,frames:dict[str,list[CandleData]],config,source:st
     freshness_limits={"1d":4320,"1h":240,"15m":config.stale_after_minutes}
     freshness={tf:session.freshness(rows[-1].timestamp,tf,at,freshness_limits[tf]) for tf,rows in frames.items()}
     fresh=all(value=="FRESH" for value in freshness.values())
-    source_allowed=source in {"yahoo","eodhd","twelvedata","replay"} or config.data_mode=="mock"
+    source_allowed=source in {"yahoo","eodhd","twelvedata","hybrid","replay"} or config.data_mode=="mock"
     session_valid=(not require_market_session) or session.is_open(at)
     dclose=[c.close for c in daily];hclose=[c.close for c in hourly];tclose=[c.close for c in trigger]
     trend_1d=analyze_trend(dclose);trend_1h=analyze_trend(hclose)

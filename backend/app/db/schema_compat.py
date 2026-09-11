@@ -2,7 +2,8 @@ from sqlalchemy import inspect, text
 
 
 V6_COLUMNS = {
-    "analyses": {"run_id": "VARCHAR(32)", "strategy_version": "VARCHAR(40)", "strategy_config_hash": "VARCHAR(64)"},
+    "analyses": {"run_id": "VARCHAR(32)", "strategy_version": "VARCHAR(40)", "strategy_config_hash": "VARCHAR(64)",
+        "ai_status": "VARCHAR(32)", "ai_provider": "VARCHAR(32)", "ai_model": "VARCHAR(80)", "ai_result": "JSON"},
     "watchlist": {"price": "NUMERIC(18,4)", "setup_quality": "INTEGER", "trend": "VARCHAR(24)",
         "structure": "VARCHAR(24)", "support": "NUMERIC(18,4)", "resistance": "NUMERIC(18,4)",
         "rr": "NUMERIC(10,4)", "run_id": "VARCHAR(32)"},

@@ -20,8 +20,18 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bist}:${POSTGRES_PASSWORD:-bist_local_password}@db:5432/${POSTGRES_DB:-bist_simulator}
       MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-yahoo}
+      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
       DATA_MODE: ${DATA_MODE:-live}
       ALLOW_MOCK_FALLBACK: "false"
+      OPERATION_MODE: LIVE_PAPER
+      LIVE_STRATEGY_VERSION: V3_FROZEN_1
+      AUTO_SCAN_ENABLED: "false"
+      AI_ENABLED: "true"
+      AI_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: openai/gpt-oss-20b
+      AI_MIN_SCORE: "70"
+      AI_TIMEOUT_SECONDS: "25"
       CORS_ORIGINS: http://localhost:3000
     ports:
       - "8000:8000"
@@ -51,8 +61,18 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bist}:${POSTGRES_PASSWORD:-bist_local_password}@db:5432/${POSTGRES_DB:-bist_simulator}
       MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-yahoo}
+      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
       DATA_MODE: ${DATA_MODE:-live}
       ALLOW_MOCK_FALLBACK: "false"
+      OPERATION_MODE: LIVE_PAPER
+      LIVE_STRATEGY_VERSION: V3_FROZEN_1
+      AUTO_SCAN_ENABLED: "false"
+      AI_ENABLED: "true"
+      AI_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: openai/gpt-oss-20b
+      AI_MIN_SCORE: "70"
+      AI_TIMEOUT_SECONDS: "25"
       WORKER_POLL_SECONDS: "20"
     depends_on:
       backend:

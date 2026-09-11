@@ -8,6 +8,7 @@ from sqlalchemy import func,select
 from sqlalchemy.orm import Session
 
 from app.analysis.pipeline import PipelineResult, analyze_frames
+from app.ai.groq_advisor import GroqAdvisor,attach_opinion,build_snapshot
 from app.config.settings import AppSettings
 from app.journal.decision_journal import log_decision
 from app.market_data.mock_provider import MockMarketDataProvider
@@ -24,7 +25,6 @@ from app.portfolio.risk_manager import size_position
 from app.scanner.watchlist_manager import update_watchlist
 from app.scanner.universe_builder import UniverseBuilder
 from app.services.forward_test import ensure_forward_run,upsert_daily_summary
-from app.services.ai_analyst import AIAnalyst
 from app.research.v4 import strategy_config_snapshot
 
 logger=logging.getLogger("SCANNER")
@@ -67,6 +67,7 @@ class BistScanner:
         self.provider=provider or get_provider(config)
         self.require_market_session=require_market_session
         self.universe=UniverseBuilder(self.provider,self.analysis_config)
+        self.ai_advisor=GroqAdvisor(config)
         self.forward_run=None
 
     def _log(self,category,decision,reason,symbol=None,score=None,details=None):
@@ -106,7 +107,6 @@ class BistScanner:
         frames=self._data(symbol);source="mock" if self.config.data_mode=="mock" else self.provider.name
         result=analyze_frames(symbol,frames,self.analysis_config,source,analysis_at,self.require_market_session)
         details=json_safe(result.details)
-        details["ai"]=AIAnalyst(self.config).analyze(symbol,result.score,result.decision,details)
         summary=portfolio_summary(self.db,self.config.initial_balance)
         assessment=self.universe.assess(symbol,frames,summary["portfolio_value"])
         analysis=Analysis(symbol=symbol,price=result.price,score=result.score,trend=result.trend,market_structure=result.market_structure,
@@ -115,6 +115,8 @@ class BistScanner:
             run_id=self.forward_run.run_id if self.forward_run else None,
             strategy_version=self.forward_run.strategy_version if self.forward_run else None,
             strategy_config_hash=self.forward_run.strategy_config_hash if self.forward_run else None)
+        opinion=self.ai_advisor.evaluate(build_snapshot(symbol,result.price,result.score,result.decision,details))
+        attach_opinion(analysis,opinion)
         try:
             self.db.add(analysis)
             if not self.db.scalar(select(Symbol.id).where(Symbol.ticker==symbol)):self.db.add(Symbol(ticker=symbol,name=symbol))
@@ -130,6 +132,9 @@ class BistScanner:
             rr=details.get("risk_reward"),run_id=self.forward_run.run_id if self.forward_run else None)
         if previous and item is None:self._log("WATCHLIST","REMOVED",result.reason,symbol,result.score)
         context=details.get("analysis_context",{})
+        self._log("AI_ADVISORY",opinion["status"],opinion.get("summary") or opinion["reason"],symbol,result.score,
+            {"provider":opinion.get("provider"),"model":opinion.get("model"),"verdict":opinion.get("verdict"),
+             "confidence":opinion.get("confidence"),"execution_authority":False})
         self._log("SIGNAL",result.decision,result.reason,symbol,result.score,{"data_source":source,
             "signal_candle_time":result.signal_candle_time.isoformat(),"universe_status":assessment.status,
             "daily_context_timestamp":context.get("daily_candle_time"),"hourly_context_timestamp":context.get("hourly_candle_time"),
@@ -142,7 +147,9 @@ class BistScanner:
         broker=PaperBroker(self.db,self.runtime["commission_rate"],self.runtime["slippage_rate"],self.config.intrabar_policy,
             run.run_id if run else None,run.strategy_version if run else None,run.strategy_config_hash if run else None)
         if self.config.data_mode=="live" and self.provider.name=="mock":return
-        for position in list(self.db.scalars(select(Position).where(Position.status=="OPEN"))):
+        for position in list(self.db.scalars(select(Position).where(
+            Position.status=="OPEN", Position.run_id==run.run_id if run else Position.run_id.is_(None)
+        ))):
             try:
                 candle=self.provider.get_candles(position.symbol,"15m",2)[-1]
                 broker.evaluate_candle(portfolio,position,candle)

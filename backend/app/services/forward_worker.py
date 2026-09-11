@@ -19,7 +19,8 @@ def expected_closed_candle(config,now:datetime|None=None):
     elapsed=(local-opened).total_seconds()
     completed=int(elapsed//900)
     if completed<1:return None
-    return (opened+timedelta(minutes=(completed-1)*15)).astimezone(timezone.utc)
+    # The idempotency key is the candle's close, not its opening timestamp.
+    return (opened+timedelta(minutes=completed*15)).astimezone(timezone.utc)
 
 
 class ForwardWorker:

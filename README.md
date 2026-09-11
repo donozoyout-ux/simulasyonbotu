@@ -1,4 +1,4 @@
-# BIST Pilot — Sanal Portföy / AI Trading Simulator V4
+# BIST Pilot — Sanal Portföy / AI Trading Simulator V6
 
 BIST hisselerini kapanmış OHLCV mumlarıyla deterministik olarak tarayan, kendi teknik analizini yapan ve 5.000 TL sanal sermayeyle LONG paper trading gerçekleştiren yerel uygulama. Gerçek broker, gerçek emir veya gerçek para entegrasyonu **yoktur**.
 
@@ -81,7 +81,7 @@ Yalnızca kapanmış mumlar normalizasyondan geçer. Sayısal OHLCV zorunludur; 
 
 ## Scanner ve paper trading
 
-Otomatik tarayıcı uygulama başladıktan 30 saniye sonra devreye girer ve DB'deki `scan_interval_minutes` değerini kullanır. Manuel tarama `POST /api/scanner/run` ile yapılabilir. Her sembol diğerlerinden izole edilir.
+Otomatik tarayıcı web prosesinin içinde çalışmaz. Ayrı `scripts.forward_worker` prosesi BIST seansında her kapanmış 15 dakikalık mumu DB idempotency anahtarıyla yalnızca bir kez işler. Manuel tarama `POST /api/scanner/run` ile yapılabilir; piyasa kapalıyken yeni giriş üretmez. Her sembol diğerlerinden izole edilir.
 
 1D ana trendi, 1H yapı/setup hizasını, 15M kapanmış mum giriş tetikleyicisini sağlar. Watchlist eşiği varsayılan 70, giriş eşiği 82'dir. Yüksek skor tek başına alım yaptırmaz; setup, bullish 1D yönü ve minimum 1.5 RR birlikte gerekir.
 
@@ -98,6 +98,7 @@ V6, bugünden itibaren 5.000 TL sanal sermaye ile gerçek piyasa verisi üzerind
 - **BIST Seans & Fail-Safe**: Seans kapalıyken veya veri hatasında yeni giriş açılmaz; açık pozisyonlar ve stop/target değerleri korunur.
 - **Run ID ve İmmutable Snapshot**: Her forward test `LIVE-YYYYMMDD-001` formatında izole edilir. Sıfırlama yapıldığında eski işlemler `ARCHIVED` olarak saklanır ve yeni 5.000 TL periyodu başlar.
 - **Strateji Versiyonu Koruması**: Aktif forward test sırasında `V3_FROZEN_1` strateji parametreleri değiştirilemez (HTTP 409 koruması).
+- **Groq AI İkinci Görüş**: Skoru en az 70 olan deterministic analizler `openai/gpt-oss-20b` modeline gönderilir. AI yalnızca `CONFIRM`, `WATCH` veya `AVOID` yorumu üretir; karar, skor, stop, hedef, lot ve emir yetkisi yoktur. Anahtar veya servis sorunu deterministic paper trading akışını durdurmaz.
 
 ### Yerel Geliştirme (Local Dev)
 

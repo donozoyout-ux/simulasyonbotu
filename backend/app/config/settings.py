@@ -1,7 +1,7 @@
 from decimal import Decimal
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,16 +17,6 @@ class AppSettings(BaseSettings):
     twelve_data_api_key: str | None = None
     hybrid_price_tolerance_pct: Decimal = Decimal("0.015")
     allow_mock_fallback: bool = False
-
-    # AI analyst
-    ai_enabled: bool = False
-    ai_provider: str = "gemini"
-    gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash-lite"
-    openai_api_key: str | None = None
-    openai_model: str = "gpt-5.6-luna"
-    ai_min_score: int = 70
-    ai_timeout_seconds: int = 25
 
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:3000"
@@ -55,7 +45,12 @@ class AppSettings(BaseSettings):
     operation_mode: str = "LIVE_PAPER"
     live_strategy_version: str = "V3_FROZEN_1"
     worker_poll_seconds: int = 20
-
+    ai_enabled: bool = True
+    ai_provider: str = "groq"
+    groq_api_key: SecretStr | None = None
+    groq_model: str = "openai/gpt-oss-20b"
+    ai_min_score: int = 70
+    ai_timeout_seconds: float = 25
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("database_url", mode="before")

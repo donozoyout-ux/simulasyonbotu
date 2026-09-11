@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import datetime,timezone
+from datetime import datetime,timedelta,timezone
 import json
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +8,7 @@ from sqlalchemy import delete, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.config.settings import get_settings
+from app.ai.groq_advisor import ai_health
 from app.db.session import get_db
 from app.models import Analysis, Candle, DailySummary, DecisionLog, ForwardRun, Portfolio, PortfolioSnapshot, Position, ScanRun, Setting, Trade, WatchlistItem
 from app.market_data.market_session import BistMarketSession
@@ -16,7 +17,6 @@ from app.schemas.common import PaperTradingControl, PortfolioReset, SettingsUpda
 from app.scanner.bist_scanner import BistScanner, effective_settings
 from app.services.forward_test import active_forward_run,ensure_forward_run,forward_performance,reset_forward_run,set_paused
 from app.services.forward_worker import expected_closed_candle
-from app.services.ai_analyst import AIAnalyst
 
 router = APIRouter()
 config = get_settings()
@@ -33,12 +33,13 @@ def current_run(db:Session)->ForwardRun:
 
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
-    db.execute(select(1)); return {"status": "healthy", "mode": config.data_mode.upper(), "provider": config.market_data_provider, "real_orders": False, "ai": AIAnalyst(config).status()}
+    db.execute(select(1)); return {"status": "healthy", "mode": config.data_mode.upper(), "provider": config.market_data_provider,
+        "real_orders": False,"ai":ai_health(config)}
 
 
 @router.get("/ai/status")
 def ai_status():
-    return AIAnalyst(config).status()
+    return ai_health(config)
 
 
 @router.get("/data-health")
@@ -112,6 +113,8 @@ def forward_status(db:Session=Depends(get_db)):
         Trade.exit_time>=datetime.combine(today,datetime.min.time(),session.tz).astimezone(timezone.utc))) or 0
     daily=db.scalar(select(DailySummary).where(DailySummary.run_id==run.run_id,DailySummary.date==today.isoformat()))
     watchlist_count=db.scalar(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.run_id==run.run_id)) or 0
+    performance=forward_performance(db,config,run)
+    last_closed=expected_closed_candle(config,now)
     return dump({"status":"PAUSED" if run.paused else "RUNNING","run_id":run.run_id,"forward_test_started_at":run.started_at,
         "running_days":max(0,(now-(run.started_at.replace(tzinfo=timezone.utc) if run.started_at.tzinfo is None else run.started_at)).days),
         "strategy_version":run.strategy_version,"strategy_config_hash":run.strategy_config_hash,"provider":run.provider,
@@ -120,12 +123,12 @@ def forward_status(db:Session=Depends(get_db)):
         "trades":db.scalar(select(func.count()).select_from(Trade).where(Trade.run_id==run.run_id)) or 0,
         "trades_today":trades_today,"watchlist_count":watchlist_count,"daily_pnl":daily.daily_pnl if daily else Decimal(0),"portfolio":summary,
         "scanner":{"last_scan":last.completed_at if last else None,"last_processed_candle":last.closed_candle_timestamp if last else None,
-            "next_expected_candle":expected_closed_candle(config,now),"symbols_scanned":last.total_symbols if last else 0,
+            "next_expected_candle":last_closed+timedelta(minutes=15) if last_closed else None,"symbols_scanned":last.total_symbols if last else 0,
             "valid":last.valid_symbols if last else 0,"failed":last.failed_symbols if last else 0,
             "watchlist":last.watchlist_count if last else 0,"signals":last.signals if last else 0,"orders":last.entries if last else 0},
-        "performance":forward_performance(db,config,run),
+        "performance":performance,
         "benchmark":{"symbol":"XU100","start_price":run.benchmark_start_price,"latest_price":run.benchmark_latest_price,
-            "return_pct":forward_performance(db,config,run)["benchmark_return_pct"],"updated_at":run.benchmark_updated_at}})
+            "return_pct":performance["benchmark_return_pct"],"updated_at":run.benchmark_updated_at}})
 
 
 @router.post("/forward/control")
