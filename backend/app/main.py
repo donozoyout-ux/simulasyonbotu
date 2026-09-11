@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from app.api.routes import router
 from app.config.logging import configure_logging
@@ -21,12 +23,28 @@ async def lifespan(_: FastAPI):
     ensure_schema_compatibility(engine)
     with SessionLocal() as db:
         ensure_portfolio(db, settings.initial_balance)
-        if settings.operation_mode=="LIVE_PAPER":run=ensure_forward_run(db,settings)
-        else:run=None
-        if not db.query(PortfolioSnapshot).first(): take_snapshot(db, settings.initial_balance,run.run_id if run else None)
+        if settings.operation_mode == "LIVE_PAPER":
+            run = ensure_forward_run(db, settings)
+        else:
+            run = None
+        if not db.query(PortfolioSnapshot).first():
+            take_snapshot(db, settings.initial_balance, run.run_id if run else None)
     yield
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse(url=settings.frontend_url, status_code=307)
+
+
 app.include_router(router, prefix=settings.api_prefix)
