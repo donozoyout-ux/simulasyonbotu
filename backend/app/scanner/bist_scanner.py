@@ -18,13 +18,14 @@ from app.market_data.eodhd_provider import EodhdHistoricalProvider
 from app.market_data.market_session import BistMarketSession
 from app.market_data.twelvedata_provider import TwelveDataProvider
 from app.market_data.hybrid_provider import HybridMarketDataProvider
-from app.models import Analysis,Candle,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
+from app.models import Analysis,Candle,DecisionLog,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
 from app.portfolio.paper_broker import DuplicateOrderError,PaperBroker
 from app.portfolio.portfolio_manager import ensure_portfolio,portfolio_summary,take_snapshot
 from app.portfolio.risk_manager import size_position
 from app.scanner.watchlist_manager import update_watchlist
 from app.scanner.universe_builder import UniverseBuilder
 from app.services.forward_test import ensure_forward_run,upsert_daily_summary
+from app.services.telegram import TelegramNotifier
 from app.research.v4 import strategy_config_snapshot
 
 logger=logging.getLogger("SCANNER")
@@ -68,6 +69,7 @@ class BistScanner:
         self.require_market_session=require_market_session
         self.universe=UniverseBuilder(self.provider,self.analysis_config)
         self.ai_advisor=GroqAdvisor(config)
+        self.telegram=TelegramNotifier(config)
         self.forward_run=None
 
     def _log(self,category,decision,reason,symbol=None,score=None,details=None):
@@ -75,6 +77,19 @@ class BistScanner:
         return log_decision(self.db,category,decision,reason,symbol,score,details,
             run_id=run.run_id if run else None,strategy_version=run.strategy_version if run else None,
             strategy_config_hash=run.strategy_config_hash if run else None)
+
+    def _telegram_once(self,key:str,text:str,symbol:str|None=None,score:int|None=None)->dict:
+        if not self.telegram.configured:return {"status":"DISABLED_OR_UNCONFIGURED"}
+        existing=self.db.scalar(select(DecisionLog.id).where(
+            DecisionLog.category=="TELEGRAM",DecisionLog.reason==key
+        ).limit(1))
+        if existing:return {"status":"DEDUPED"}
+        result=self.telegram.send(text)
+        if result.get("status")=="SENT":
+            self._log("TELEGRAM","SENT",key,symbol,score,details=result)
+        else:
+            self._log("TELEGRAM","FAILED",key,symbol,score,details=result)
+        return result
 
     def _data(self,symbol:str)->dict[str,list]:
         frames={}
@@ -139,6 +154,11 @@ class BistScanner:
             "signal_candle_time":result.signal_candle_time.isoformat(),"universe_status":assessment.status,
             "daily_context_timestamp":context.get("daily_candle_time"),"hourly_context_timestamp":context.get("hourly_candle_time"),
             "trigger_15m_timestamp":context.get("entry_candle_time")})
+        if self.config.telegram_signal_alerts and result.decision=="POSSIBLE_ENTRY" and result.score>=self.runtime["entry_score"]:
+            telegram_key=f"SIGNAL:{self.forward_run.run_id if self.forward_run else 'NO-RUN'}:{symbol}:{result.signal_candle_time.isoformat()}"
+            self._telegram_once(telegram_key,self.telegram.signal_message(
+                symbol,result.score,result.setup,result.price,details.get("risk_reward"),opinion
+            ),symbol,result.score)
         return analysis,result,assessment
 
     def _manage_positions(self, timeframe: str = "5m"):
@@ -152,8 +172,14 @@ class BistScanner:
         ))):
             try:
                 candle=self.provider.get_candles(position.symbol,timeframe,2)[-1]
-                broker.evaluate_candle(portfolio,position,candle)
+                trade=broker.evaluate_candle(portfolio,position,candle)
                 self._log("POSITION","RE_EVALUATED",f"{timeframe} OHLC {candle.open}/{candle.high}/{candle.low}/{candle.close}",position.symbol)
+                if trade is not None:
+                    self._telegram_once(
+                        f"SELL:{trade.id}",
+                        self.telegram.sell_message(trade.symbol,trade.quantity,trade.exit_price,trade.realized_pnl,trade.exit_reason),
+                        trade.symbol,trade.signal_score
+                    )
             except Exception as exc:self._log("DATA_PROVIDER_ERROR","NO_TRADE",f"Pozisyon değişmedi: {exc}",position.symbol)
 
     def manage_positions_only(self, timeframe: str = "5m") -> dict:
@@ -199,9 +225,14 @@ class BistScanner:
             if not risk.approved:self._log("RISK","NO_TRADE",risk.reason,analysis.symbol,analysis.score);continue
             funnel["risk_pass"]+=1
             try:
-                broker.buy(portfolio,analysis.symbol,risk.quantity,analysis.price,Decimal(str(setup["invalidation_level"])),Decimal(str(setup["target"])),
+                position=broker.buy(portfolio,analysis.symbol,risk.quantity,analysis.price,Decimal(str(setup["invalidation_level"])),Decimal(str(setup["target"])),
                     analysis.setup,analysis.score,analysis.reason,key,result.signal_candle_time)
                 funnel["buy"]+=1;self._log("ORDER","VIRTUAL_BUY",f"{risk.quantity} lot @ {analysis.price}",analysis.symbol,analysis.score)
+                self._telegram_once(
+                    f"BUY:{key}",
+                    self.telegram.buy_message(analysis.symbol,risk.quantity,position.entry_price,position.stop_price,position.target_price,analysis.score,analysis.setup),
+                    analysis.symbol,analysis.score
+                )
             except DuplicateOrderError:self._log("ORDER","DUPLICATE_BLOCKED",key,analysis.symbol,analysis.score)
 
     def _run_cycle(self,max_symbols:int|None=None,closed_candle_timestamp:datetime|None=None)->dict:
