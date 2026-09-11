@@ -17,6 +17,7 @@ from app.schemas.common import PaperTradingControl, PortfolioReset, SettingsUpda
 from app.scanner.bist_scanner import BistScanner, effective_settings
 from app.services.forward_test import active_forward_run,ensure_forward_run,forward_performance,reset_forward_run,set_paused
 from app.services.forward_worker import expected_closed_candle
+from app.services.telegram import TelegramNotifier
 
 router = APIRouter()
 config = get_settings()
@@ -34,12 +35,31 @@ def current_run(db:Session)->ForwardRun:
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
     db.execute(select(1)); return {"status": "healthy", "mode": config.data_mode.upper(), "provider": config.market_data_provider,
-        "real_orders": False,"ai":ai_health(config)}
+        "real_orders": False,"ai":ai_health(config),"telegram":TelegramNotifier(config).status()}
 
 
 @router.get("/ai/status")
 def ai_status():
     return ai_health(config)
+
+
+@router.get("/telegram/status")
+def telegram_status():
+    return TelegramNotifier(config).status()
+
+
+@router.post("/telegram/test")
+def telegram_test():
+    notifier=TelegramNotifier(config)
+    result=notifier.send(
+        "✅ <b>BIST PILOT Telegram bağlantısı çalışıyor.</b>\n"
+        f"Mode: {config.operation_mode}\n"
+        f"Data: {config.market_data_provider}\n"
+        "Gerçek emirler kapalı • PAPER TRADING"
+    )
+    if result.get("status")!="SENT":
+        raise HTTPException(503,result)
+    return result
 
 
 @router.get("/data-health")
