@@ -510,6 +510,11 @@ function Overview({
               <b>{forward?.provider?.toUpperCase() || "YAHOO"}</b>
               <small>Mock emri yasak</small>
             </div>
+            <div>
+              <span>Bot Döngüsü</span>
+              <b>{forward?.worker?.current_cadence_minutes ?? (forward?.market_status === "MARKET OPEN" ? 5 : 15)} dk</b>
+              <small>Piyasa açık 5 dk • kapanış sonrası 15 dk</small>
+            </div>
           </div>
           {forward?.benchmark && (
             <div
@@ -529,7 +534,10 @@ function Overview({
                 <b>Benchmark:</b> Bot {pct(portfolio.total_return_pct)} vs XU100{" "}
                 {forward.benchmark.return_pct != null
                   ? pct(forward.benchmark.return_pct)
-                  : "Veri bekleniyor"}
+                  : "İlk XU100 verisi alınıyor"}
+                {forward.benchmark.updated_at
+                  ? " • " + fmtDate(forward.benchmark.updated_at)
+                  : ""}
               </span>
               {perf?.sample_warning && (
                 <span
@@ -551,8 +559,8 @@ function Overview({
 
         <article className="panel scanner-status-panel">
           <PanelTitle
-            title="15M Scanner Durumu"
-            sub="Her kapanmış 15M mumdan sonra bir kez"
+            title="5M İşlem Kontrolü / 15M Strateji"
+            sub="Pozisyonlar 5 dakikada bir; yeni strateji sinyali kapanmış 15M mumda"
           />
           <div className="strategy-grid">
             <div>
@@ -569,13 +577,11 @@ function Overview({
               </small>
             </div>
             <div>
-              <span>Sonraki Mum</span>
-              <b>
-                {forward?.scanner.next_expected_candle
-                  ? fmtDate(forward.scanner.next_expected_candle)
-                  : "—"}
-              </b>
-              <small>Otomatik tetikleme</small>
+              <span>İşlem Kontrolü</span>
+              <b>{forward?.worker?.position_check_minutes ?? 5} dk</b>
+              <small>
+                Stop/hedef kontrolü • Strateji mumu {forward?.worker?.strategy_candle_minutes ?? 15} dk
+              </small>
             </div>
             <div>
               <span>Taranan Sembol</span>
