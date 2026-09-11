@@ -1,11 +1,8 @@
 services:
-  # Backend Web Service
   - type: web
-    name: bist-simulator-backend
-    env: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    name: bist-simulator-api
+    env: docker
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -20,11 +17,8 @@ services:
       - key: EODHD_API_TOKEN
         sync: false
       - key: CORS_ORIGINS
-        value: https://bist-simulator-frontend.onrender.com,http://localhost:3000
-      - key: FRONTEND_URL
-        value: https://bist-simulator-frontend.onrender.com
+        value: https://bist-simulator-api.onrender.com,http://localhost:3000
 
-  # Forward Scanner Background Worker
   - type: worker
     name: bist-simulator-worker
     env: python
@@ -46,17 +40,6 @@ services:
         sync: false
       - key: WORKER_POLL_SECONDS
         value: "20"
-
-  # Public frontend. Users only need this URL; /api is proxied to the backend.
-  - type: web
-    name: bist-simulator-frontend
-    env: node
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
-    envVars:
-      - key: BACKEND_URL
-        value: https://bist-simulator-backend.onrender.com
 
 databases:
   - name: bist-simulator-db
