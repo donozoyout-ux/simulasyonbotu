@@ -1,5 +1,5 @@
 import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,Portfolio,Position,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const API = "/api";
 
 async function get<T>(path:string):Promise<T>{
   const response = await fetch(`${API}${path}`, {cache:"no-store"});
