@@ -18,6 +18,12 @@ services:
         value: V3_FROZEN_1
       - key: AUTO_SCAN_ENABLED
         value: "false"
+      - key: EMBEDDED_WORKER_ENABLED
+        value: "true"
+      - key: MARKET_OPEN_POLL_SECONDS
+        value: "300"
+      - key: AFTER_HOURS_POLL_SECONDS
+        value: "900"
       - key: AI_ENABLED
         value: "true"
       - key: AI_PROVIDER
@@ -36,46 +42,6 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: https://bist-simulator-api.onrender.com,http://localhost:3000
-
-  - type: worker
-    name: bist-simulator-worker
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m scripts.forward_worker
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: bist-simulator-db
-          property: connectionString
-      - key: DATA_MODE
-        value: live
-      - key: MARKET_DATA_PROVIDER
-        value: hybrid
-      - key: OPERATION_MODE
-        value: LIVE_PAPER
-      - key: LIVE_STRATEGY_VERSION
-        value: V3_FROZEN_1
-      - key: AUTO_SCAN_ENABLED
-        value: "false"
-      - key: AI_ENABLED
-        value: "true"
-      - key: AI_PROVIDER
-        value: groq
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GROQ_MODEL
-        value: openai/gpt-oss-20b
-      - key: AI_MIN_SCORE
-        value: "70"
-      - key: AI_TIMEOUT_SECONDS
-        value: "25"
-      - key: TWELVE_DATA_API_KEY
-        sync: false
-      - key: EODHD_API_TOKEN
-        sync: false
-      - key: WORKER_POLL_SECONDS
-        value: "20"
 
 databases:
   - name: bist-simulator-db
