@@ -16,6 +16,7 @@ from app.market_data.yahoo_provider import YahooMarketDataProvider
 from app.market_data.eodhd_provider import EodhdHistoricalProvider
 from app.market_data.market_session import BistMarketSession
 from app.market_data.twelvedata_provider import TwelveDataProvider
+from app.market_data.hybrid_provider import HybridMarketDataProvider
 from app.models import Analysis,Candle,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
 from app.portfolio.paper_broker import DuplicateOrderError,PaperBroker
 from app.portfolio.portfolio_manager import ensure_portfolio,portfolio_summary,take_snapshot
@@ -52,7 +53,7 @@ def get_provider(config:AppSettings)->MarketDataProvider:
     if name=="yahoo":return YahooMarketDataProvider()
     if name=="eodhd":return EodhdHistoricalProvider(config.eodhd_api_token or "")
     if name=="twelvedata":return TwelveDataProvider(config.twelve_data_api_key or "")
-    raise ValueError(f"Bilinmeyen market data provider: {config.market_data_provider}")
+    if name in {"hybrid","dual","twelvedata+yahoo","twelve+yahoo"}:\n        return HybridMarketDataProvider(config.twelve_data_api_key or "", config.hybrid_price_tolerance_pct)\n    raise ValueError(f"Bilinmeyen market data provider: {config.market_data_provider}")
 
 
 class BistScanner:
