@@ -241,6 +241,13 @@ export type ForwardStatus = {
     signals: number;
     orders: number;
   };
+  worker: {
+    embedded: boolean;
+    always_on: boolean;
+    current_cadence_minutes: number;
+    position_check_minutes: number;
+    strategy_candle_minutes: number;
+  };
   performance: {
     trades: number;
     wins: number;
