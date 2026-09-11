@@ -13,9 +13,10 @@ class AppSettings(BaseSettings):
     market_data_provider: str = "yahoo"
     eodhd_api_token: str | None = None
     twelve_data_api_key: str | None = None
-    allow_mock_fallback: bool = False  # retained only for backwards-compatible env parsing; never used in live mode
+    allow_mock_fallback: bool = False
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:3000"
+    frontend_url: str = "http://localhost:3000"
 
     initial_balance: Decimal = Decimal("5000.00")
     commission_rate: Decimal = Decimal("0.0010")
