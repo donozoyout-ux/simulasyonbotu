@@ -14,10 +14,12 @@ services:
         value: hybrid
       - key: AI_ENABLED
         value: "true"
-      - key: OPENAI_API_KEY
+      - key: AI_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
         sync: false
-      - key: OPENAI_MODEL
-        value: gpt-5.6-luna
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-lite
       - key: TWELVE_DATA_API_KEY
         sync: false
       - key: EODHD_API_TOKEN
@@ -42,10 +44,12 @@ services:
         value: hybrid
       - key: AI_ENABLED
         value: "true"
-      - key: OPENAI_API_KEY
+      - key: AI_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
         sync: false
-      - key: OPENAI_MODEL
-        value: gpt-5.6-luna
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-lite
       - key: TWELVE_DATA_API_KEY
         sync: false
       - key: EODHD_API_TOKEN
