@@ -14,7 +14,7 @@ class TwelveDataProvider(MarketDataProvider):
     """Twelve Data adapter using provider metadata and raw/as-traded OHLC."""
     name = "twelvedata"
     base_url = "https://api.twelvedata.com"
-    intervals = {"15m": "15min", "1h": "1h", "1d": "1day"}
+    intervals = {"5m": "5min", "15m": "15min", "1h": "1h", "1d": "1day"}
     price_adjustment = "none"
 
     def __init__(self, api_key: str, start: datetime | None = None, end: datetime | None = None,
