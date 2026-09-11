@@ -16,6 +16,7 @@ from app.schemas.common import PaperTradingControl, PortfolioReset, SettingsUpda
 from app.scanner.bist_scanner import BistScanner, effective_settings
 from app.services.forward_test import active_forward_run,ensure_forward_run,forward_performance,reset_forward_run,set_paused
 from app.services.forward_worker import expected_closed_candle
+from app.services.ai_analyst import AIAnalyst
 
 router = APIRouter()
 config = get_settings()
@@ -32,7 +33,12 @@ def current_run(db:Session)->ForwardRun:
 
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
-    db.execute(select(1)); return {"status": "healthy", "mode": config.data_mode.upper(), "provider": config.market_data_provider, "real_orders": False}
+    db.execute(select(1)); return {"status": "healthy", "mode": config.data_mode.upper(), "provider": config.market_data_provider, "real_orders": False, "ai": AIAnalyst(config).status()}
+
+
+@router.get("/ai/status")
+def ai_status():
+    return AIAnalyst(config).status()
 
 
 @router.get("/data-health")
