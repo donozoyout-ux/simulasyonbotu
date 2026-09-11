@@ -75,7 +75,7 @@ class HybridMarketDataProvider(MarketDataProvider):
     def get_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[CandleData]:
         timeframe = timeframe.lower()
 
-        if timeframe == "15m":
+        if timeframe in {"5m", "15m"}:
             try:
                 primary = self.twelve.get_candles(symbol, timeframe, limit)
                 self.last_sources[f"{symbol}:{timeframe}"] = "twelvedata"
