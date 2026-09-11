@@ -3,7 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 
-TIMEFRAME_DELTA = {"15m": timedelta(minutes=15), "1h": timedelta(hours=1), "1d": timedelta(days=1)}
+TIMEFRAME_DELTA = {"5m": timedelta(minutes=5), "15m": timedelta(minutes=15), "1h": timedelta(hours=1), "1d": timedelta(days=1)}
 
 
 @dataclass(frozen=True)

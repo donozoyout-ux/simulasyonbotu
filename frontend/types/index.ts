@@ -53,13 +53,20 @@ export type Analysis = {
       support: number;
       resistance: number;
       support_zone?: PriceZone;
-      resistance_zone?: PriceZone;
+    resistance_zone?: PriceZone;
       zones?: PriceZone[];
     };
     candle_quality?: Record<string, number | boolean>;
     risk_reward?: number;
     score_breakdown?: Record<string, number>;
     setup?: { entry_area: number; invalidation_level: number; target: number };
+    setup_quality?: number;
+    setup_reason?: string;
+    setup_rejections?: string[];
+    technical_score?: number;
+    indicators?: IndicatorSnapshot;
+    relative_strength?: RelativeStrength;
+    news?: { status: string; news_score?: number; items: NewsItem[] };
   };
 };
 export type AISecondOpinion = {
@@ -74,7 +81,13 @@ export type AISecondOpinion = {
   strengths?: string[];
   risks?: string[];
   invalidation_note?: string;
+  combined_ai?: CombinedAI;
 };
+export type CombinedAI={technical_verdict:string;news_sentiment:string;combined_view:string;confidence:number;summary:string;main_risks:string[];execution_authority:false};
+export type IndicatorSnapshot={ema20?:number;ema50?:number;ema200?:number;rsi?:number;macd?:{macd:number;signal:number;histogram:number};bollinger?:{upper:number;middle:number;lower:number};atr?:number;atr_pct?:number;vwap?:number;rvol?:number;relative_volume?:number;volume_sma20?:number;volatility_20d?:number;trend_strength?:number;price_distance_ema20_pct?:number;price_distance_ema50_pct?:number;price_distance_ema200_pct?:number};
+export type RelativeStrength={label:string;stock_return_1d?:number;xu100_return_1d?:number;relative_strength_1d?:number;stock_return_5d?:number;xu100_return_5d?:number;relative_strength_5d?:number;stock_return_20d?:number;xu100_return_20d?:number;relative_strength_20d?:number};
+export type NewsItem={id?:number;symbol?:string;company_name?:string;source:string;source_id?:string;title:string;content?:string;url:string;category:string;status?:string;published_at:string;fetched_at?:string;ai_status?:string;ai_sentiment?:"POSITIVE"|"NEUTRAL"|"NEGATIVE";ai_importance?:number;ai_summary?:string;ai_horizon?:string;ai_risks?:string[];ai_tags?:string[];ai_model?:string};
+export type NewsHealth={enabled:boolean;configured:boolean;status:string;sources:Record<string,{status:string;last_fetch?:string;new_items:number;parse_errors:number;error?:string}>;groq_processed:number;pending_ai:number};
 export type PriceZone = {
   low: number;
   high: number;
@@ -147,6 +160,7 @@ export type Candle = {
   low: number;
   close: number;
   volume: number;
+  indicators?: IndicatorSnapshot;
 };
 export type Snapshot = { timestamp: string; portfolio_value: number };
 export type DataHealth = {

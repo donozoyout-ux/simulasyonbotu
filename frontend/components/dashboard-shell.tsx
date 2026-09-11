@@ -8,6 +8,7 @@ import {
   CandlestickChart,
   CircleDollarSign,
   ListFilter,
+  Newspaper,
   Pause,
   Play,
   RefreshCw,
@@ -29,6 +30,8 @@ import type {
   StrategyHealth,
   Trade,
   WatchItem,
+  NewsItem,
+  NewsHealth,
 } from "@/types";
 import { PriceChart } from "./price-chart";
 
@@ -39,6 +42,7 @@ type View =
   | "Pozisyonlar"
   | "İşlemler"
   | "Bot Aktivitesi"
+  | "Haberler / KAP"
   | "Ayarlar";
 const nav: [View, React.ElementType][] = [
   ["Genel Bakış", BarChart3],
@@ -47,6 +51,7 @@ const nav: [View, React.ElementType][] = [
   ["Pozisyonlar", BriefcaseBusiness],
   ["İşlemler", CircleDollarSign],
   ["Bot Aktivitesi", Activity],
+  ["Haberler / KAP", Newspaper],
   ["Ayarlar", Settings],
 ];
 const seedPortfolio: Portfolio = {
@@ -106,6 +111,8 @@ export function DashboardShell() {
     [strategyHealth, setStrategyHealth] = useState<StrategyHealth>(
       initialStrategyHealth,
     ),
+    [news,setNews]=useState<NewsItem[]>([]),
+    [newsHealth,setNewsHealth]=useState<NewsHealth>(),
     [loading, setLoading] = useState(false),
     [message, setMessage] = useState("Yerel API bekleniyor"),
     [settings, setSettings] = useState<Record<string, number>>({
@@ -121,7 +128,7 @@ export function DashboardShell() {
     });
   const load = useCallback(async () => {
     try {
-      const [p, a, w, pos, t, d, h, s, dh, sh, fw] = await Promise.all([
+      const [p, a, w, pos, t, d, h, s, dh, sh, fw, newsRows, nh] = await Promise.all([
         api.portfolio(),
         api.analyses(),
         api.watchlist(),
@@ -133,6 +140,8 @@ export function DashboardShell() {
         api.dataHealth(),
         api.strategyHealth(),
         api.forwardStatus(),
+        api.news().catch(()=>[]),
+        api.newsHealth().catch(()=>undefined),
       ]);
       setPortfolio(p);
       setForward(fw);
@@ -145,6 +154,8 @@ export function DashboardShell() {
       setSettings(s);
       setHealth(dh);
       setStrategyHealth(sh);
+      setNews(newsRows);
+      setNewsHealth(nh);
       setSelected((current) =>
         a.some((x) => x.symbol === current) ? current : a[0]?.symbol || "",
       );
@@ -333,11 +344,15 @@ export function DashboardShell() {
             timeframe={timeframe}
             setTimeframe={setTimeframe}
             trades={trades}
+            positions={positions}
           />
         )}
         {view === "Pozisyonlar" && <Positions rows={positions} />}{" "}
         {view === "İşlemler" && <Trades rows={trades} />}{" "}
         {view === "Bot Aktivitesi" && <ActivityFeed rows={decisions} />}{" "}
+        {view === "Haberler / KAP" && (
+          <NewsPanel rows={news} health={newsHealth} onRefresh={async()=>{await api.refreshNews();await load()}} />
+        )}{" "}
         {view === "Ayarlar" && (
           <SettingsView
             values={settings}
@@ -934,6 +949,10 @@ function Watchlist({
               <th>Yapı</th>
               <th>Setup</th>
               <th>Hacim</th>
+              <th>RSI</th>
+              <th>Relatif Güç</th>
+              <th>Haber</th>
+              <th>AI</th>
               <th>Momentum</th>
               <th>Destek</th>
               <th>Direnç</th>
@@ -967,6 +986,10 @@ function Watchlist({
                   <td>{row.structure || a?.market_structure || "—"}</td>
                   <td>{row.setup}</td>
                   <td>{a?.details.volume?.rvol?.toFixed(2) || "—"}x</td>
+                  <td>{a?.details.indicators?.rsi?.toFixed(1) || "—"}</td>
+                  <td>{a?.details.relative_strength?.label || "NO_DATA"}</td>
+                  <td>{a?.details.news?.items?.[0]?.ai_sentiment || "NO_NEWS"}</td>
+                  <td>{a?.ai_result?.verdict || a?.ai_status || "—"}</td>
                   <td>{a?.details.momentum?.label || "—"}</td>
                   <td>
                     {row.support != null
@@ -1010,6 +1033,7 @@ function AnalysisViewGroq({
   timeframe,
   setTimeframe,
   trades,
+  positions,
 }: {
   analyses: Analysis[];
   chosen?: Analysis;
@@ -1019,6 +1043,7 @@ function AnalysisViewGroq({
   timeframe: string;
   setTimeframe: (v: string) => void;
   trades: Trade[];
+  positions: Position[];
 }) {
   if (!chosen)
     return (
@@ -1049,7 +1074,7 @@ function AnalysisViewGroq({
             <span>{money(chosen.price)}</span>
           </div>
           <div className="timeframes">
-            {["15m", "1h", "1d"].map((tf) => (
+            {["5m", "15m", "1h", "1d"].map((tf) => (
               <button
                 key={tf}
                 className={timeframe === tf ? "active" : ""}
@@ -1068,6 +1093,10 @@ function AnalysisViewGroq({
                 ? {
                     support: lv.support,
                     resistance: lv.resistance,
+                    supportLow: lv.support_zone?.low,
+                    supportHigh: lv.support_zone?.high,
+                    resistanceLow: lv.resistance_zone?.low,
+                    resistanceHigh: lv.resistance_zone?.high,
                     entry: setup?.entry_area,
                     stop: setup?.invalidation_level,
                     target: setup?.target,
@@ -1084,7 +1113,9 @@ function AnalysisViewGroq({
               .map((item) => ({
                 timestamp: item.exit_time,
                 price: item.exit_price,
+                label: item.exit_reason?.toUpperCase().includes("STOP") ? "STOP" : "TAKE PROFIT",
               }))}
+            entries={[...trades.filter(item=>item.symbol===chosen.symbol).map(item=>({timestamp:item.entry_time,price:item.entry_price,label:"BUY"})),...positions.filter(item=>item.symbol===chosen.symbol).map(item=>({timestamp:item.opened_at,price:item.entry_price,label:"BUY"}))]}
           />
         ) : (
           <div className="chart-placeholder">
@@ -1129,6 +1160,8 @@ function AnalysisViewGroq({
           <Stat label="1H Structure" value={chosen.market_structure} />
           <Stat label="15M Trigger" value={chosen.setup} />
           <Stat label="Momentum" value={chosen.details.momentum?.label} />
+          <Stat label="RSI 14" value={chosen.details.indicators?.rsi?.toFixed(1)} />
+          <Stat label="MACD" value={chosen.details.indicators?.macd?.histogram?.toFixed(3)} />
           <Stat
             label="RVOL"
             value={
@@ -1141,6 +1174,8 @@ function AnalysisViewGroq({
             label="ATR"
             value={chosen.details.volatility?.atr?.toFixed(2)}
           />
+          <Stat label="VWAP ilişkisi" value={chosen.details.indicators?.vwap ? (chosen.price>=chosen.details.indicators.vwap?"ÜZERİNDE":"ALTINDA") : "—"} />
+          <Stat label="XU100'e göre" value={chosen.details.relative_strength?.label || "NO_DATA"} />
           <Stat
             label="Risk / Getiri"
             value={chosen.details.risk_reward?.toFixed(2)}
@@ -1161,6 +1196,8 @@ function AnalysisViewGroq({
           <p>{chosen.reason}</p>
         </div>
         <AISecondOpinionCard analysis={chosen} />
+        <NewsSummaryCard analysis={chosen} />
+        <CombinedViewCard analysis={chosen} />
       </aside>
     </div>
   );
@@ -1231,6 +1268,23 @@ function AISecondOpinionCard({ analysis }: { analysis: Analysis }) {
       )}
     </section>
   );
+}
+
+function NewsSummaryCard({analysis}:{analysis:Analysis}){
+  const news=analysis.details.news;
+  const latest=news?.items?.[0];
+  return <section className="ai-opinion waiting"><div className="ai-opinion-head"><div><span>HABER / KAP</span><b>{latest?.source||"NO_NEWS"}</b></div><em>{latest?.ai_importance!=null?`${latest.ai_importance}/100`:"VERİ YOK"}</em></div>{latest?<><p><b>{latest.title}</b></p><p>{latest.ai_summary||"AI özeti henüz hazır değil."}</p><small>{latest.ai_sentiment||"NEUTRAL"} • {fmtDate(latest.published_at)}</small></>:<div className="ai-empty"><Newspaper size={17}/><span>Bu sembol için haber bulunamadı.</span></div>}</section>
+}
+
+function CombinedViewCard({analysis}:{analysis:Analysis}){
+  const combined=analysis.ai_result?.combined_ai;
+  return <section className="ai-opinion ready"><div className="ai-opinion-head"><div><span>BİRLEŞİK GÖRÜŞ</span><b>{combined?.combined_view||"BEKLENİYOR"}</b></div><em>EXECUTION AUTHORITY: FALSE</em></div><p>{combined?.summary||"Teknik ve haber bağlamı tamamlandığında oluşur."}</p>{combined?.main_risks?.length?<small>Risk: {combined.main_risks.join(" • ")}</small>:null}</section>
+}
+
+function NewsPanel({rows,health,onRefresh}:{rows:NewsItem[];health?:NewsHealth;onRefresh:()=>Promise<void>}){
+  const [filter,setFilter]=useState("ALL");
+  const filtered=rows.filter(item=>filter==="ALL"||filter==="KAP"&&item.source==="KAP"||filter==="POSITIVE"&&item.ai_sentiment==="POSITIVE"||filter==="NEGATIVE"&&item.ai_sentiment==="NEGATIVE"||filter==="IMPORTANT"&&(item.ai_importance||0)>=80);
+  return <><article className="panel news-health"><PanelTitle title="News Health" sub={`Durum: ${health?.status||"NO_DATA"} • Groq: ${health?.groq_processed||0} • Bekleyen: ${health?.pending_ai||0}`}/><div className="health-row">{Object.entries(health?.sources||{}).map(([source,state])=><span key={source}><b>{source}</b> {state.status} • {state.new_items} yeni • {state.parse_errors} parse hata</span>)}</div></article><article className="panel table-panel"><div className="chart-head"><div><b>Haberler / KAP</b><span>{filtered.length} kayıt</span></div><div className="timeframes">{[["ALL","Tümü"],["KAP","KAP"],["POSITIVE","Positive"],["NEGATIVE","Negative"],["IMPORTANT","Önem ≥80"]].map(([key,label])=><button key={key} className={filter===key?"active":""} onClick={()=>setFilter(key)}>{label}</button>)}<button onClick={()=>void onRefresh()}><RefreshCw size={14}/> Yenile</button></div></div><div className="table-scroll"><table><thead><tr><th>Saat</th><th>Sembol</th><th>Kaynak</th><th>Başlık</th><th>Kategori</th><th>Sentiment</th><th>Önem</th><th>AI Özet</th></tr></thead><tbody>{filtered.map(item=><tr key={`${item.source}-${item.source_id||item.id}`}><td>{fmtDate(item.published_at)}</td><td><b>{item.symbol||"—"}</b></td><td>{item.source}</td><td><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></td><td>{item.category}</td><td>{item.ai_sentiment||"BEKLIYOR"}</td><td>{item.ai_importance??"—"}</td><td>{item.ai_summary||"—"}</td></tr>)}</tbody></table></div></article></>
 }
 
 function Positions({ rows }: { rows: Position[] }) {

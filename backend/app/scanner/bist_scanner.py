@@ -18,7 +18,8 @@ from app.market_data.eodhd_provider import EodhdHistoricalProvider
 from app.market_data.market_session import BistMarketSession
 from app.market_data.twelvedata_provider import TwelveDataProvider
 from app.market_data.hybrid_provider import HybridMarketDataProvider
-from app.models import Analysis,Candle,DecisionLog,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
+from app.models import Analysis,Candle,DecisionLog,NewsItem,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
+from app.news.sentiment import GroqNewsAnalyzer
 from app.portfolio.paper_broker import DuplicateOrderError,PaperBroker
 from app.portfolio.portfolio_manager import ensure_portfolio,portfolio_summary,take_snapshot
 from app.portfolio.risk_manager import size_position
@@ -70,6 +71,8 @@ class BistScanner:
         self.universe=UniverseBuilder(self.provider,self.analysis_config)
         self.ai_advisor=GroqAdvisor(config)
         self.telegram=TelegramNotifier(config)
+        self.news_advisor=GroqNewsAnalyzer(config)
+        self._benchmark_daily=None
         self.forward_run=None
 
     def _log(self,category,decision,reason,symbol=None,score=None,details=None):
@@ -118,10 +121,36 @@ class BistScanner:
                         low=candle.low,close=candle.close,volume=candle.volume,source=source))
                     existing.add(key)
 
+    def _relative_strength(self, daily:list)->dict:
+        try:
+            if self._benchmark_daily is None:self._benchmark_daily=self.provider.get_candles("XU100","1d",40)
+            benchmark=self._benchmark_daily
+            def change(rows,days):
+                return (rows[-1].close/rows[-days-1].close-1)*100 if len(rows)>days and rows[-days-1].close else None
+            result={}
+            for days in (1,5,20):
+                stock,xu100=change(daily,days),change(benchmark,days)
+                result[f"stock_return_{days}d"],result[f"xu100_return_{days}d"]=stock,xu100
+                result[f"relative_strength_{days}d"]=stock-xu100 if stock is not None and xu100 is not None else None
+            rs=result.get("relative_strength_20d")
+            result["label"]="NO_DATA" if rs is None else "GÜÇLÜ" if rs>1 else "ZAYIF" if rs<-1 else "NÖTR"
+            return result
+        except Exception:
+            return {"label":"NO_DATA","stock_return_1d":None,"xu100_return_1d":None,"relative_strength_1d":None,
+                "stock_return_5d":None,"xu100_return_5d":None,"relative_strength_5d":None,
+                "stock_return_20d":None,"xu100_return_20d":None,"relative_strength_20d":None}
+
     def analyze_symbol(self,symbol:str,analysis_at:datetime|None=None):
         frames=self._data(symbol);source="mock" if self.config.data_mode=="mock" else self.provider.name
         result=analyze_frames(symbol,frames,self.analysis_config,source,analysis_at,self.require_market_session)
         details=json_safe(result.details)
+        details["technical_score"]=result.score
+        details["relative_strength"]=json_safe(self._relative_strength(frames["1d"]))
+        news_rows=self.db.scalars(select(NewsItem).where(NewsItem.symbol==symbol).order_by(NewsItem.published_at.desc()).limit(5)).all()
+        news_context=[{"title":row.title,"source":row.source,"ai_sentiment":row.ai_sentiment,
+            "ai_importance":row.ai_importance,"ai_summary":row.ai_summary,"ai_risks":row.ai_risks} for row in news_rows]
+        details["news"]={"status":"OK" if news_context else "NO_NEWS","items":news_context,
+            "news_score":max((row.ai_importance or 0 for row in news_rows),default=None)}
         summary=portfolio_summary(self.db,self.config.initial_balance)
         assessment=self.universe.assess(symbol,frames,summary["portfolio_value"])
         analysis=Analysis(symbol=symbol,price=result.price,score=result.score,trend=result.trend,market_structure=result.market_structure,
@@ -131,6 +160,7 @@ class BistScanner:
             strategy_version=self.forward_run.strategy_version if self.forward_run else None,
             strategy_config_hash=self.forward_run.strategy_config_hash if self.forward_run else None)
         opinion=self.ai_advisor.evaluate(build_snapshot(symbol,result.price,result.score,result.decision,details))
+        opinion["combined_ai"]=self.news_advisor.combined(opinion,news_context)
         attach_opinion(analysis,opinion)
         try:
             self.db.add(analysis)

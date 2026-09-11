@@ -1,4 +1,4 @@
-import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,Portfolio,Position,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
+import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,NewsHealth,NewsItem,Portfolio,Position,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
 const API = "/api";
 
 async function get<T>(path: string): Promise<T> {
@@ -27,6 +27,10 @@ export const api = {
     if (!r.ok) throw new Error("Telegram test mesajı gönderilemedi");
     return r.json();
   },
+  news: () => get<NewsItem[]>("/news"),
+  symbolNews: (symbol:string) => get<NewsItem[]>(`/news/${symbol}`),
+  newsHealth: () => get<NewsHealth>("/news/health"),
+  refreshNews: async () => {const r=await fetch(`${API}/news/refresh`,{method:"POST"});if(!r.ok)throw new Error("Haber yenilenemedi");return r.json()},
   scan: async () => {
     const r = await fetch(`${API}/scanner/run`, { method: "POST" });
     if (!r.ok) throw new Error("Tarama başlatılamadı");

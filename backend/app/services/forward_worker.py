@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.market_data.market_session import BistMarketSession
-from app.models import ProcessedCandle, ScanRun
+from app.models import Position, ProcessedCandle, ScanRun
 from app.scanner.bist_scanner import BistScanner
 from app.services.benchmark import fetch_xu100_price
 from app.services.forward_test import ensure_forward_run
@@ -78,7 +78,8 @@ class ForwardWorker:
         # alive and performs maintenance on the slower after-hours cadence.
         if not market_open:
             return {
-                "status": "after_hours_maintenance",
+                "status": "market_closed",
+                "maintenance": "after_hours",
                 "market_open": False,
                 "benchmark": benchmark,
             }
@@ -107,7 +108,8 @@ class ForwardWorker:
         )
         if marker and marker.status == "COMPLETE":
             return {
-                "status": "five_minute_maintenance",
+                "status": "already_processed",
+                "maintenance": "five_minute",
                 "closed_candle_timestamp": stamp.isoformat(),
                 "position_check": position_check,
                 "benchmark": benchmark,

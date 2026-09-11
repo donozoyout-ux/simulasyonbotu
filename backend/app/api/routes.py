@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config.settings import get_settings
 from app.ai.groq_advisor import ai_health
+from app.analysis.indicators import indicator_series
 from app.db.session import get_db
 from app.models import Analysis, Candle, DailySummary, DecisionLog, ForwardRun, Portfolio, PortfolioSnapshot, Position, ScanRun, Setting, Trade, WatchlistItem
 from app.market_data.market_session import BistMarketSession
@@ -18,6 +19,7 @@ from app.scanner.bist_scanner import BistScanner, effective_settings
 from app.services.forward_test import active_forward_run,ensure_forward_run,forward_performance,reset_forward_run,set_paused
 from app.services.forward_worker import expected_closed_candle
 from app.services.telegram import TelegramNotifier
+from app.news.service import NewsService
 
 router = APIRouter()
 config = get_settings()
@@ -201,10 +203,54 @@ def analysis(symbol: str, db: Session = Depends(get_db)):
     return dump(row)
 
 
+@router.get("/news/health")
+def news_health(db: Session = Depends(get_db)):
+    return dump(NewsService(db,config).health())
+
+
+@router.get("/news/important")
+def important_news(min_importance:int=Query(80,ge=0,le=100),limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).list(min_importance=min_importance,limit=limit))
+
+
+@router.get("/news")
+def news(source:str|None=None,sentiment:str|None=None,min_importance:int|None=Query(None,ge=0,le=100),limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).list(source=source,sentiment=sentiment,min_importance=min_importance,limit=limit))
+
+
+@router.get("/news/{symbol}/latest")
+def latest_news(symbol:str,db:Session=Depends(get_db)):
+    rows=NewsService(db,config).list(symbol=symbol,limit=1)
+    if not rows:raise HTTPException(404,"Haber bulunamadı")
+    return dump(rows[0])
+
+
+@router.get("/news/{symbol}")
+def symbol_news(symbol:str,limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).list(symbol=symbol,limit=limit))
+
+
+@router.post("/news/refresh")
+def refresh_news(db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).refresh())
+
+
 @router.get("/candles/{symbol}")
-def candles(symbol: str, timeframe: str = Query("15m", pattern="^(15m|1h|1d)$"), limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
+def candles(symbol: str, timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$"), limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
     rows = db.scalars(select(Candle).where(Candle.symbol == symbol.upper(), Candle.timeframe == timeframe).order_by(desc(Candle.timestamp)).limit(limit)).all()
-    return dump(list(reversed(rows)))
+    if timeframe=="5m" and len(rows)<min(limit,35):
+        try:
+            fetched=BistScanner(db,config).provider.get_candles(symbol.upper(),timeframe,max(limit,220))
+            existing={row.timestamp for row in rows}
+            for candle in fetched:
+                if candle.timestamp not in existing:db.add(Candle(symbol=symbol.upper(),timeframe=timeframe,timestamp=candle.timestamp,
+                    open=candle.open,high=candle.high,low=candle.low,close=candle.close,volume=candle.volume,source="hybrid"))
+            db.commit();rows=db.scalars(select(Candle).where(Candle.symbol==symbol.upper(),Candle.timeframe==timeframe).order_by(desc(Candle.timestamp)).limit(limit)).all()
+        except Exception as exc:
+            if not rows:raise HTTPException(503,f"5M veri alınamadı: {type(exc).__name__}") from None
+    ordered=list(reversed(rows));series=indicator_series(ordered)
+    return dump([{**{key:getattr(row,key) for key in ("timestamp","open","high","low","close","volume")},
+        "indicators":series[index]} for index,row in enumerate(ordered)])
 
 
 @router.get("/decisions")

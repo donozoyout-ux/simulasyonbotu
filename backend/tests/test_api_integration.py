@@ -7,7 +7,9 @@ from sqlalchemy.pool import StaticPool
 from app.config.settings import get_settings
 from app.db.session import Base, get_db
 from app.api.routes import router
-from app.models import Portfolio
+from app.models import Candle, Portfolio
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from app.portfolio.portfolio_manager import ensure_portfolio
 
 config = get_settings()
@@ -60,3 +62,26 @@ def test_reset_requires_exact_confirmation():
         ok = client.post("/api/portfolio/reset", json={"confirmation": "RESET PAPER PORTFOLIO"})
         assert ok.status_code == 200
         assert ok.json()["initial_balance"] == 5000
+
+
+def test_news_endpoints_are_available_without_exposing_secrets():
+    with TestClient(app) as client:
+        assert client.get("/api/news").status_code==200
+        health=client.get("/api/news/health")
+        assert health.status_code==200 and "sources" in health.json()
+        payload=str(client.get("/api/health").json())
+        assert "GROQ_API_KEY" not in payload and "DATABASE_URL" not in payload and "TELEGRAM_BOT_TOKEN" not in payload
+
+
+def test_5m_candle_endpoint_returns_backend_indicators():
+    with Session(engine) as db:
+        db.query(Candle).filter(Candle.symbol=="FIVE",Candle.timeframe=="5m").delete()
+        start=datetime(2026,1,1,tzinfo=timezone.utc)
+        for index in range(220):
+            price=Decimal(100)+Decimal(index)/10
+            db.add(Candle(symbol="FIVE",timeframe="5m",timestamp=start+timedelta(minutes=5*index),open=price,high=price+1,low=price-1,close=price,volume=Decimal(1000+index),source="test"))
+        db.commit()
+    with TestClient(app) as client:
+        response=client.get("/api/candles/FIVE?timeframe=5m&limit=220")
+        assert response.status_code==200 and len(response.json())==220
+        assert response.json()[-1]["indicators"]["ema200"] is not None

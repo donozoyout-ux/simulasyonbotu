@@ -36,6 +36,16 @@ services:
         value: "70"
       - key: AI_TIMEOUT_SECONDS
         value: "25"
+      - key: NEWS_ENABLED
+        value: "true"
+      - key: KAP_ENABLED
+        value: "true"
+      - key: NEWS_POLL_MINUTES_OPEN
+        value: "5"
+      - key: NEWS_POLL_MINUTES_CLOSED
+        value: "15"
+      - key: NEWS_TELEGRAM_MIN_IMPORTANCE
+        value: "80"
       - key: TELEGRAM_ENABLED
         value: "true"
       - key: TELEGRAM_BOT_TOKEN

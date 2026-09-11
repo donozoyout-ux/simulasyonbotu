@@ -63,6 +63,9 @@ def build_snapshot(symbol: str, price: Any, score: int, decision: str, details: 
         "target": setup.get("target"),
         "rr": details.get("risk_reward"),
         "score_breakdown": details.get("score_breakdown", {}),
+        "indicators": details.get("indicators", {}),
+        "relative_strength": details.get("relative_strength", {}),
+        "recent_news": details.get("news", {}).get("items", [])[:5],
         "closed_candle_timestamps": {
             "1d": context.get("daily_candle_time"),
             "1h": context.get("hourly_candle_time"),

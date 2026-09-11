@@ -39,18 +39,24 @@ def swing_points(highs: list[Decimal], lows: list[Decimal], window: int = 2):
 
 def analyze_market_structure(candles: list[CandleData], window: int = 2) -> dict:
     if len(candles) < max(12, window*4+4):
-        return {"label": "UNCERTAIN", "complete": False, "swings": [], "sequence": []}
+        return {"label": "UNCERTAIN", "trend":"RANGE", "complete": False, "swings": [], "sequence": [],"bos":"NONE","choch":"NONE"}
     swings = detect_swings([c.high for c in candles], [c.low for c in candles], [c.timestamp for c in candles], window)
     highs = [s for s in swings if s.type == "SWING_HIGH"]
     lows = [s for s in swings if s.type == "SWING_LOW"]
     if len(highs) < 2 or len(lows) < 2:
-        return {"label": "UNCERTAIN", "complete": False, "swings": [asdict(s) for s in swings], "sequence": []}
+        return {"label": "UNCERTAIN", "trend":"RANGE", "complete": False, "swings": [asdict(s) for s in swings], "sequence": [],"bos":"NONE","choch":"NONE"}
     sequence = ["HH" if highs[-1].price > highs[-2].price else "LH", "HL" if lows[-1].price > lows[-2].price else "LL"]
     if sequence == ["HH", "HL"]: label = "BULLISH"
     elif sequence == ["LH", "LL"]: label = "BEARISH"
     elif abs(highs[-1].price-highs[-2].price)/highs[-2].price <= Decimal("0.01") and abs(lows[-1].price-lows[-2].price)/lows[-2].price <= Decimal("0.01"): label = "RANGE"
     else: label = "UNCERTAIN"
-    return {"label": label, "complete": True, "swings": [asdict(s) for s in swings[-12:]], "sequence": sequence}
+    close = candles[-1].close
+    last_high, last_low = highs[-1], lows[-1]
+    bos = "BOS_UP" if close > last_high.price else "BOS_DOWN" if close < last_low.price else "NONE"
+    choch = "CHOCH_UP" if label == "BEARISH" and close > last_high.price else "CHOCH_DOWN" if label == "BULLISH" and close < last_low.price else "NONE"
+    return {"label": label, "trend": label if label in {"BULLISH", "BEARISH", "RANGE"} else "RANGE",
+        "complete": True, "swings": [asdict(s) for s in swings[-12:]], "sequence": sequence,
+        "last_swing_high": asdict(last_high), "last_swing_low": asdict(last_low), "bos": bos, "choch": choch}
 
 
 def classify_structure(highs: list[Decimal], lows: list[Decimal]) -> str:

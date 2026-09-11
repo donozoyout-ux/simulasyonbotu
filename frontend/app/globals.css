@@ -1023,6 +1023,8 @@ tbody tr:hover {
     display: none;
   }
 }
+.chart-tools{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;padding:.65rem 0}.chart-tools>div{display:flex;gap:.4rem;flex-wrap:wrap}.chart-tools button{border:1px solid #2a3745;background:#111821;color:#9aa7b7;border-radius:6px;padding:.42rem .62rem;font-size:.74rem;font-weight:700;cursor:pointer}.chart-tools button.active{color:#eaf2fb;border-color:#36a3ff;background:#173047}.pro-chart{min-width:0}.news-health{margin-bottom:1rem}.health-row{display:flex;flex-wrap:wrap;gap:.75rem}.health-row>span{padding:.65rem .8rem;border:1px solid #27323e;border-radius:7px;background:#111821;color:#9aa7b7;font-size:.82rem}.table-panel a{color:#8fc9ff;text-decoration:none}.table-panel a:hover{text-decoration:underline}.insight .ai-opinion{margin-top:.85rem}.ai-opinion p b{color:#eaf2fb}
+
 @media (max-width: 760px) {
   .app-shell {
     display: block;

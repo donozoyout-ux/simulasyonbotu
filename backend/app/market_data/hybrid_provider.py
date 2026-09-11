@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from time import monotonic
 
 from app.market_data.provider import CandleData, DataValidationError, MarketDataProvider
 from app.market_data.twelvedata_provider import TwelveDataProvider
 from app.market_data.yahoo_provider import YahooMarketDataProvider
+
+
+_LIVE_CACHE: dict[tuple[str,str,int],tuple[float,list[CandleData]]] = {}
 
 
 class HybridMarketDataProvider(MarketDataProvider):
@@ -72,7 +76,7 @@ class HybridMarketDataProvider(MarketDataProvider):
                 f"limit %{(self.price_tolerance_pct * Decimal('100')):.2f}"
             )
 
-    def get_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[CandleData]:
+    def _fetch_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[CandleData]:
         timeframe = timeframe.lower()
 
         if timeframe in {"5m", "15m"}:
@@ -122,3 +126,10 @@ class HybridMarketDataProvider(MarketDataProvider):
                     f"{symbol} {timeframe}: Yahoo ve Twelve Data başarısız; "
                     f"Yahoo={yahoo_error}; Twelve={twelve_error}"
                 ) from None
+
+    def get_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[CandleData]:
+        key=(symbol.upper(),timeframe.lower(),limit);cached=_LIVE_CACHE.get(key);now=monotonic()
+        if cached and cached[0]>now:return cached[1]
+        candles=self._fetch_candles(symbol,timeframe,limit)
+        _LIVE_CACHE[key]=(now+(60 if timeframe.lower() in {"5m","15m"} else 300),candles)
+        return candles

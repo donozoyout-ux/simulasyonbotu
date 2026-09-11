@@ -263,3 +263,44 @@ class DailySummary(Base):
     largest_position: Mapped[Decimal] = mapped_column(money, default=Decimal("0"))
     cash_pct: Mapped[Decimal] = mapped_column(Numeric(10, 4), default=Decimal("100"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class NewsItem(Base):
+    __tablename__ = "news_items"
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_news_source_id"),
+        UniqueConstraint("content_hash", name="uq_news_content_hash"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    source_id: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(500))
+    content: Mapped[str] = mapped_column(Text, default="")
+    url: Mapped[str] = mapped_column(String(1000))
+    category: Mapped[str] = mapped_column(String(48), default="OTHER")
+    status: Mapped[str] = mapped_column(String(32), default="OK")
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    ai_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ai_sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    ai_importance: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_horizon: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    ai_risks: Mapped[list] = mapped_column(JSON, default=list)
+    ai_tags: Mapped[list] = mapped_column(JSON, default=list)
+    ai_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    telegram_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class NewsSourceState(Base):
+    __tablename__ = "news_source_states"
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    status: Mapped[str] = mapped_column(String(24), default="NO_DATA")
+    last_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    new_items: Mapped[int] = mapped_column(Integer, default=0)
+    parse_errors: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)

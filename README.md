@@ -30,14 +30,22 @@ Twelve Data credential mevcutsa aynı qualification komutu XIST `/stocks` discov
 
 ## Mimari
 
+```text
+Twelve Data + Yahoo → Market Data → Indicators / Market Structure → Strategy Engine → Technical Score
+                                           KAP + izinli RSS kaynakları → News Engine → Groq AI
+Technical AI + News AI → Risk Engine → Paper Broker → Telegram + Dashboard
+```
+
 - `backend/app/market_data`: Sağlayıcı soyutlaması, Yahoo Chart OHLCV adaptörü, katı normalizasyon ve BIST seans takvimi.
 - `backend/app/analysis`: EMA, RSI, MACD, ATR, Bollinger, trend, swing/market structure, destek-direnç, momentum, hacim ve volatilite.
+- `backend/app/news`: KAP/RSS allowlist istemcileri, güvenli parser, içerik hash dedupe, Groq haber analizi ve önem eşiğine bağlı Telegram bildirimi.
 - `backend/app/strategy`: BREAKOUT, PULLBACK, SUPPORT_BOUNCE, TREND_CONTINUATION setup'ları; 0–100 scoring ve signal kararı.
 - `backend/app/scanner`: 1D → 1H → 15M pipeline, sembol bazında hata izolasyonu, watchlist ve otomatik giriş.
 - `backend/app/portfolio`: Decimal muhasebe, risk boyutlandırma, komisyon/slippage, paper broker ve fixed stop/target yönetimi.
 - `backend/app/journal`: İşlem açılmayan kararlar dahil audit logları.
 - `frontend`: Next.js App Router, TypeScript ve Lightweight Charts ile responsive koyu dashboard.
 - `PostgreSQL`: Kalıcı portföy, analiz, mum, emir, işlem ve snapshot verileri.
+- `PostgreSQL`: `news_items` ve `news_source_states` tablolarıyla haber, AI sonucu ve incremental kaynak sağlığı da kalıcıdır.
 
 ## Docker ile çalıştırma
 
@@ -95,6 +103,8 @@ V6, bugünden itibaren 5.000 TL sanal sermaye ile gerçek piyasa verisi üzerind
 - **Kalıcı Portföy**: 5.000 TL sanal sermaye, uygulama restart olsa bile DB'den korunur.
 - **Provider Desteği**: Canlı modda varsayılan olarak Yahoo live data kullanılır. Twelve Data anahtarı tanımlandığında `MARKET_DATA_PROVIDER=twelvedata` ile strateji kodu değişmeden geçiş yapılabilir. Canlı modda mock veri ile işlem açılması kesinlikle engellenmiştir.
 - **15M Zamanlayıcı ve Worker**: Her kapanmış 15 dakikalık mum için bir kez çalışır (`processed_candles` tablosu ile idempotency). Hafta sonu ve seans dışı saatlerde otomatik tarama ve yeni giriş engellenir.
+- **5M Pozisyon Kontrolü**: Frozen giriş stratejisi 15M kalır; açık pozisyonların stop/hedef kontrolü ve grafik mikro fiyat hareketi için 5M mumlar kullanılır. Sağlayıcı 5M sunamazsa pozisyon koruması 15M veriye fail-safe döner.
+- **KAP ve Haber Motoru**: Piyasa açıkken 5, kapalıyken 15 dakikalık incremental polling; kaynak, parser, Groq veya Telegram arızası paper-trading döngüsünü durdurmaz.
 - **BIST Seans & Fail-Safe**: Seans kapalıyken veya veri hatasında yeni giriş açılmaz; açık pozisyonlar ve stop/target değerleri korunur.
 - **Run ID ve İmmutable Snapshot**: Her forward test `LIVE-YYYYMMDD-001` formatında izole edilir. Sıfırlama yapıldığında eski işlemler `ARCHIVED` olarak saklanır ve yeni 5.000 TL periyodu başlar.
 - **Strateji Versiyonu Koruması**: Aktif forward test sırasında `V3_FROZEN_1` strateji parametreleri değiştirilemez (HTTP 409 koruması).
@@ -132,6 +142,8 @@ npm run dev
 - `GET /api/portfolio`, `/api/portfolio/history`
 - `GET /api/positions`, `/api/trades`, `/api/watchlist`
 - `GET /api/scanner/results`, `/api/analysis/{symbol}`, `/api/candles/{symbol}`
+- `GET /api/news`, `/api/news/{symbol}`, `/api/news/{symbol}/latest`, `/api/news/important`, `/api/news/health`
+- `POST /api/news/refresh`
 - `GET /api/decisions`, `/api/settings`
 - `GET /api/forward/status`, `/api/forward/daily-summaries`, `/api/forward/runs`
 - `POST /api/forward/control` (Pause / Resume)

@@ -54,13 +54,19 @@ class AppSettings(BaseSettings):
     groq_model: str = "openai/gpt-oss-20b"
     ai_min_score: int = 70
     ai_timeout_seconds: float = 25
-
     # Telegram alerts
     telegram_enabled: bool = False
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
     telegram_signal_alerts: bool = True
     telegram_timeout_seconds: float = 15
+    news_enabled: bool = True
+    kap_enabled: bool = True
+    news_poll_minutes_open: int = 5
+    news_poll_minutes_closed: int = 15
+    news_telegram_min_importance: int = 80
+    news_http_timeout_seconds: float = 12
+    news_max_html_bytes: int = 2_000_000
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("database_url", mode="before")

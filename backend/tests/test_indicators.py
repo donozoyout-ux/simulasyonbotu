@@ -1,5 +1,7 @@
 from decimal import Decimal
-from app.analysis.indicators import atr, bollinger, ema, macd, rate_of_change, rsi
+from app.analysis.indicators import atr, bollinger, ema, indicator_snapshot, macd, rate_of_change, rsi, vwap
+from app.market_data.provider import CandleData
+from datetime import datetime, timedelta, timezone
 
 
 def d(values): return [Decimal(str(v)) for v in values]
@@ -23,4 +25,19 @@ def test_atr_and_bollinger():
     assert atr(highs, lows, closes) == Decimal(2)
     bands = bollinger(closes)
     assert bands["upper"] > bands["middle"] > bands["lower"]
+
+
+def test_extended_indicator_snapshot_has_finite_backend_values():
+    start=datetime(2026,1,1,tzinfo=timezone.utc)
+    candles=[CandleData(start+timedelta(days=i),Decimal(100+i),Decimal(102+i),Decimal(99+i),Decimal(101+i),Decimal(1000+i),True) for i in range(220)]
+    values=indicator_snapshot(candles)
+    assert values["ema20"]>values["ema50"]>values["ema200"]
+    assert 0<=values["rsi"]<=100 and values["macd"]["histogram"] is not None
+    assert values["bollinger"]["upper"]>values["bollinger"]["lower"]
+    assert values["atr"]>0 and values["vwap"]>0 and values["rvol"]>0
+    assert values["volatility_20d"]>=0
+
+
+def test_vwap_rejects_zero_volume():
+    assert vwap(d([1]),d([1]),d([1]),d([0])) is None
 

@@ -9,6 +9,7 @@ from app.analysis.support_resistance import nearest_zones
 from app.analysis.trend import analyze_trend
 from app.analysis.volume import analyze_volume
 from app.analysis.volatility import analyze_volatility
+from app.analysis.indicators import indicator_snapshot
 from app.market_data.market_session import BistMarketSession
 from app.market_data.provider import CandleData
 from app.portfolio.risk_manager import calculate_risk_reward
@@ -51,7 +52,7 @@ def analyze_frames(symbol:str,frames:dict[str,list[CandleData]],config,source:st
     freshness_limits={"1d":4320,"1h":240,"15m":config.stale_after_minutes}
     freshness={tf:session.freshness(rows[-1].timestamp,tf,at,freshness_limits[tf]) for tf,rows in frames.items()}
     fresh=all(value=="FRESH" for value in freshness.values())
-    source_allowed=source in {"yahoo","eodhd","twelvedata","hybrid","replay"} or config.data_mode=="mock"
+    source_allowed=source in {"yahoo","eodhd","twelvedata","hybrid","twelvedata+yahoo","replay"} or config.data_mode=="mock"
     session_valid=(not require_market_session) or session.is_open(at)
     dclose=[c.close for c in daily];hclose=[c.close for c in hourly];tclose=[c.close for c in trigger]
     trend_1d=analyze_trend(dclose);trend_1h=analyze_trend(hclose)
@@ -64,6 +65,8 @@ def analyze_frames(symbol:str,frames:dict[str,list[CandleData]],config,source:st
                         and (tclose[-1]/zone["high"]-1)*100<=Decimal("8")]
     levels["breakout_zone"]=max(broken_resistances,key=lambda zone:zone["high"],default=None)
     candle_quality=analyze_candle(trigger[-1],volatility["atr"])
+    indicators=indicator_snapshot(trigger)
+    indicators["volatility_20d"]=indicator_snapshot(daily).get("volatility_20d")
     analysis_complete=all([trend_1d.get("complete"),trend_1h.get("complete"),structure.get("complete"),
                            momentum.get("complete"),volume.get("complete"),volatility.get("complete"),
                            levels.get("support_zone") is not None,levels.get("resistance_zone") is not None])
@@ -85,10 +88,14 @@ def analyze_frames(symbol:str,frames:dict[str,list[CandleData]],config,source:st
         "valid_setup":setup.detected,"score_pass":score>=config.entry_score,"rr_pass":rr>=config.min_rr,
         "session_valid":session_valid,"source_allowed":source_allowed}
     reason=f"1D {trend_1d['label']}; 1H {structure['label']}; 15M {setup.reason}; RVOL {volume.get('rvol')}; {decision_reason}"
+    setup_rejections=sorted({f"{name}:{rule}" for name,item in setup.evidence.get("diagnostics",{}).items()
+        for rule in item.get("failed_rules",[])}) if isinstance(setup.evidence,dict) else []
     details={"analysis_context":{"daily_candle_time":daily[-1].timestamp,"hourly_candle_time":hourly[-1].timestamp,
         "entry_candle_time":trigger[-1].timestamp,"analysis_at":at,"freshness":freshness},
         "timeframes":{"1d":trend_1d,"1h":trend_1h},"structure":structure,"momentum":momentum,"volume":volume,
-        "volatility":volatility,"levels":levels,"candle_quality":candle_quality,"setup":asdict(setup),
+        "volatility":volatility,"indicators":indicators,"levels":levels,"candle_quality":candle_quality,"setup":asdict(setup),
+        "setup_quality":setup.score,"setup_reason":setup.reason,
+        "setup_rejections":setup_rejections,
         "risk_reward":rr,"score_breakdown":breakdown,"data_stale":not fresh,"analysis_complete":analysis_complete,
         "ignored_open_or_future_candles":ignored_candles}
     return PipelineResult(symbol,tclose[-1],score,trend_1d["label"],structure["label"],setup.setup_type,decision,reason,details,trigger[-1].timestamp,funnel)

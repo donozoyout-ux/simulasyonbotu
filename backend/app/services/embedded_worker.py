@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import threading
+from time import monotonic
 from datetime import datetime, timezone
 
 from app.db.session import SessionLocal
 from app.market_data.market_session import BistMarketSession
 from app.services.forward_worker import ForwardWorker
+from app.news.service import NewsService
 
 logger = logging.getLogger("EMBEDDED_WORKER")
 
@@ -24,6 +26,7 @@ class EmbeddedWorker:
         self.config = config
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_news_poll = 0.0
 
     def _sleep_seconds(self) -> int:
         session = BistMarketSession.from_config(self.config)
@@ -36,6 +39,12 @@ class EmbeddedWorker:
             try:
                 with SessionLocal() as db:
                     result = ForwardWorker(db, self.config).run_once()
+                    news_interval=(self.config.news_poll_minutes_open if BistMarketSession.from_config(self.config).is_open()
+                        else self.config.news_poll_minutes_closed)*60
+                    if self.config.news_enabled and monotonic()-self._last_news_poll>=news_interval:
+                        try: NewsService(db,self.config).refresh()
+                        except Exception: db.rollback();logger.exception("news_refresh_failed")
+                        self._last_news_poll=monotonic()
                 logger.info("embedded_worker_cycle", extra={"result": result.get("status")})
             except Exception:
                 logger.exception("embedded_worker_cycle_failed")
