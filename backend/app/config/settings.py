@@ -20,6 +20,9 @@ class AppSettings(BaseSettings):
 
     # AI analyst
     ai_enabled: bool = False
+    ai_provider: str = "gemini"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash-lite"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6-luna"
     ai_min_score: int = 70
