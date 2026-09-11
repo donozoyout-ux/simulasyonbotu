@@ -127,6 +127,9 @@ def forward_status(db:Session=Depends(get_db)):
             "valid":last.valid_symbols if last else 0,"failed":last.failed_symbols if last else 0,
             "watchlist":last.watchlist_count if last else 0,"signals":last.signals if last else 0,"orders":last.entries if last else 0},
         "performance":performance,
+        "worker":{"embedded":config.embedded_worker_enabled,"always_on":True,
+            "current_cadence_minutes":5 if session.is_open(now) else 15,
+            "position_check_minutes":5,"strategy_candle_minutes":15},
         "benchmark":{"symbol":"XU100","start_price":run.benchmark_start_price,"latest_price":run.benchmark_latest_price,
             "return_pct":performance["benchmark_return_pct"],"updated_at":run.benchmark_updated_at}})
 
