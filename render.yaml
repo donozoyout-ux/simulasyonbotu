@@ -1,0 +1,63 @@
+services:
+  # Backend Web Service
+  - type: web
+    name: bist-simulator-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bist-simulator-db
+          property: connectionString
+      - key: DATA_MODE
+        value: live
+      - key: MARKET_DATA_PROVIDER
+        value: yahoo
+      - key: TWELVE_DATA_API_KEY
+        sync: false
+      - key: EODHD_API_TOKEN
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://bist-simulator-frontend.onrender.com,http://localhost:3000
+
+  # Forward Scanner Background Worker
+  - type: worker
+    name: bist-simulator-worker
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m scripts.forward_worker
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bist-simulator-db
+          property: connectionString
+      - key: DATA_MODE
+        value: live
+      - key: MARKET_DATA_PROVIDER
+        value: yahoo
+      - key: TWELVE_DATA_API_KEY
+        sync: false
+      - key: EODHD_API_TOKEN
+        sync: false
+      - key: WORKER_POLL_SECONDS
+        value: "20"
+
+  # Frontend Web Service
+  - type: web
+    name: bist-simulator-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://bist-simulator-backend.onrender.com/api
+
+databases:
+  - name: bist-simulator-db
+    databaseName: bist_simulator
+    user: bist
+    plan: free

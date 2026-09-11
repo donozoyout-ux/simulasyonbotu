@@ -1,0 +1,604 @@
+{
+  "config_hash": {
+    "actual": "9185f9ce56652997aaa33041fb7d386c918b93fe203cd91b39f15a0ebd93bbeb",
+    "expected": "9185f9ce56652997aaa33041fb7d386c918b93fe203cd91b39f15a0ebd93bbeb",
+    "status": "PASS"
+  },
+  "created_at": "2026-09-11T10:09:32.004964+00:00",
+  "cross_provider": [],
+  "oos_requirement": {
+    "end": "2026-05-31T23:59:00+00:00",
+    "must_end_before": "2026-06-19T06:45:00+00:00",
+    "start": "2026-02-01T00:00:00+00:00"
+  },
+  "providers": {
+    "eodhd": {
+      "secret": "EODHD_API_TOKEN",
+      "status": "WAITING_FOR_PROVIDER_CREDENTIAL"
+    },
+    "twelvedata": {
+      "secret": "TWELVE_DATA_API_KEY",
+      "status": "WAITING_FOR_PROVIDER_CREDENTIAL"
+    },
+    "yahoo": {
+      "adjustment_semantics": "provider_chart_raw_unverified",
+      "cache_read_latency_ms": {
+        "hits": 30,
+        "max": 109.82,
+        "mean": 32.22
+      },
+      "daily_intraday_price_continuity": {
+        "AKBNK": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.70978,
+          "mean_close_difference_pct": 0.1466,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "ASELS": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.446429,
+          "mean_close_difference_pct": 0.172003,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "BIMAS": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 1.217168,
+          "mean_close_difference_pct": 0.196364,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "EREGL": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.67862,
+          "mean_close_difference_pct": 0.134712,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "FROTO": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.686636,
+          "mean_close_difference_pct": 0.120354,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "GARAN": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.633415,
+          "mean_close_difference_pct": 0.174469,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "KCHOL": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.812591,
+          "mean_close_difference_pct": 0.112141,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "SISE": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.668746,
+          "mean_close_difference_pct": 0.123986,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "THYAO": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.432277,
+          "mean_close_difference_pct": 0.146021,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        },
+        "TUPRS": {
+          "common_sessions": 56,
+          "large_discontinuities": 0,
+          "max_close_difference_pct": 0.775546,
+          "mean_close_difference_pct": 0.204147,
+          "status": "PASS",
+          "warning_threshold_pct": 10.0
+        }
+      },
+      "errors": [],
+      "failed_symbols": [],
+      "metrics": {
+        "AKBNK": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:49+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1197,
+            "rows": 1253,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.239425
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.785966
+          }
+        },
+        "ASELS": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:28+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1197,
+            "rows": 1253,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.239425
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.850048
+          }
+        },
+        "BIMAS": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:39+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1200,
+            "rows": 1256,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.477707
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.801987
+          }
+        },
+        "EREGL": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:46+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1198,
+            "rows": 1254,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.318979
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.834028
+          }
+        },
+        "FROTO": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:54+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1198,
+            "rows": 1254,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.318979
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.850048
+          }
+        },
+        "GARAN": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:52+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1197,
+            "rows": 1253,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.239425
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.866069
+          }
+        },
+        "KCHOL": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:40+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1197,
+            "rows": 1253,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.239425
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.834028
+          }
+        },
+        "SISE": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:57+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1197,
+            "rows": 1253,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.239425
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.818007
+          }
+        },
+        "THYAO": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:37+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1197,
+            "rows": 1253,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.239425
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.834028
+          }
+        },
+        "TUPRS": {
+          "15m": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2026-06-22T06:45:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T08:41:43+00:00",
+            "missing_rate_pct": 1.284027,
+            "pre_v3_trading_days": 0,
+            "rows": 1922,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 3.121748
+          },
+          "1d": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2021-09-13T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-09T06:30:00+00:00",
+            "missing_rate_pct": 0.0,
+            "pre_v3_trading_days": 1197,
+            "rows": 1253,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 0.239425
+          },
+          "1h": {
+            "duplicate_rate_pct": 0.0,
+            "earliest": "2023-10-24T06:30:00+00:00",
+            "invalid_ohlc_rate_pct": 0.0,
+            "latest": "2026-09-11T07:30:00+00:00",
+            "missing_rate_pct": 4.072537,
+            "pre_v3_trading_days": 664,
+            "rows": 6242,
+            "session_mismatch_rate_pct": 0.0,
+            "strictly_increasing": true,
+            "timezone_aware": true,
+            "zero_volume_rate_pct": 7.850048
+          }
+        }
+      },
+      "minimum_pre_v3_15m_trading_days": 0,
+      "oos_depth_pass": false,
+      "provider": "yahoo",
+      "rate_limit_errors": 0,
+      "request_failure_rate_pct": 0.0,
+      "requested_symbols": 10,
+      "response_latency_ms": {
+        "max": 1110.76,
+        "mean": 743.81
+      },
+      "selection_note": "Data quality only; PnL is never evaluated during provider qualification.",
+      "status": "PARTIAL",
+      "symbol_coverage_pct": 100.0,
+      "ticker_mapping": {
+        "AKBNK": {
+          "mapping_source": "provider_convention",
+          "symbol": "AKBNK.IS"
+        },
+        "ASELS": {
+          "mapping_source": "provider_convention",
+          "symbol": "ASELS.IS"
+        },
+        "BIMAS": {
+          "mapping_source": "provider_convention",
+          "symbol": "BIMAS.IS"
+        },
+        "EREGL": {
+          "mapping_source": "provider_convention",
+          "symbol": "EREGL.IS"
+        },
+        "FROTO": {
+          "mapping_source": "provider_convention",
+          "symbol": "FROTO.IS"
+        },
+        "GARAN": {
+          "mapping_source": "provider_convention",
+          "symbol": "GARAN.IS"
+        },
+        "KCHOL": {
+          "mapping_source": "provider_convention",
+          "symbol": "KCHOL.IS"
+        },
+        "SISE": {
+          "mapping_source": "provider_convention",
+          "symbol": "SISE.IS"
+        },
+        "THYAO": {
+          "mapping_source": "provider_convention",
+          "symbol": "THYAO.IS"
+        },
+        "TUPRS": {
+          "mapping_source": "provider_convention",
+          "symbol": "TUPRS.IS"
+        }
+      },
+      "valid_symbols": 10
+    }
+  },
+  "replay_gate": {
+    "reason": "Twelve Data small/mid qualification requires at least 25 OOS-capable symbols",
+    "status": "BLOCKED"
+  },
+  "selected_primary": null,
+  "selection_basis": "coverage, depth, integrity, session alignment, stability, reproducibility; never PnL",
+  "status": "WAITING_FOR_PROVIDER_CREDENTIAL",
+  "twelvedata_small_mid": {
+    "15m_oos_capable": 0,
+    "failed": 0,
+    "failed_symbols": [],
+    "illiquid_or_low_quality_symbols": [],
+    "oos_capable_symbols": [],
+    "secret": "TWELVE_DATA_API_KEY",
+    "small_mid_symbols_requested": 0,
+    "small_mid_valid": 0,
+    "status": "WAITING_FOR_PROVIDER_CREDENTIAL",
+    "symbols": []
+  },
+  "validation_provider": null
+}

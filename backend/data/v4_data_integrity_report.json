@@ -1,0 +1,727 @@
+{
+  "daily_session": {
+    "expected_symbol_sessions": 1925,
+    "missing_symbol_sessions": 0,
+    "more_than_one_candle_per_session": 0,
+    "symbol_sessions": 1925,
+    "valid": true
+  },
+  "evaluation_end": "2026-09-10T15:00:00+00:00",
+  "evaluation_start": "2026-06-23T10:15:00+00:00",
+  "hourly_session": {
+    "expected_bar_count": 17640,
+    "expected_bars_per_full_symbol_day": 9,
+    "full_symbol_days": 1960,
+    "missing_bar_count": 0,
+    "note": "Regular anchors are inferred from >=80% provider prevalence. Partial boundary day and isolated closing markers are excluded from missing counts.",
+    "observed_bar_count": 17850,
+    "observed_by_anchor": {
+      "09:30": 1960,
+      "10:30": 1960,
+      "11:30": 1960,
+      "12:30": 1960,
+      "13:30": 1995,
+      "14:30": 1995,
+      "15:30": 1995,
+      "16:30": 1995,
+      "17:30": 1995,
+      "18:00": 35
+    },
+    "optional_anchors": [
+      "18:00"
+    ],
+    "provider_anchors": [
+      "09:30",
+      "10:30",
+      "11:30",
+      "12:30",
+      "13:30",
+      "14:30",
+      "15:30",
+      "16:30",
+      "17:30",
+      "18:00"
+    ],
+    "regular_expected_anchors": [
+      "09:30",
+      "10:30",
+      "11:30",
+      "12:30",
+      "13:30",
+      "14:30",
+      "15:30",
+      "16:30",
+      "17:30"
+    ]
+  },
+  "row_count_anomaly_root_cause": "V3 metadata used the 15m range as the headline period while rows_by_timeframe included Yahoo's longer 730d 1h and 5y 1d warm-up histories. Canonical identities are unique; context rows were not duplicated evaluation rows.",
+  "source": "yahoo",
+  "timeframes": {
+    "15m": {
+      "duplicates": 0,
+      "evaluation_rows": 65345,
+      "raw_end": "2026-09-10T15:00:00+00:00",
+      "raw_start": "2026-06-19T06:45:00+00:00",
+      "rows_per_symbol": {
+        "AKBNK": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "ARCLK": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "ASELS": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "BIMAS": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "CCOLA": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "CIMSA": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "DOAS": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "EKGYO": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "ENKAI": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "EREGL": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "FROTO": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "GARAN": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "GUBRF": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "HALKB": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "ISCTR": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "KCHOL": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "KRDMD": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "MAVI": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "MGROS": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "PETKM": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "PGSUS": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "SAHOL": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "SASA": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "SISE": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "TAVHL": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "TCELL": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "THYAO": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "TKFEN": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "TOASO": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "TSKB": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "TTKOM": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "TUPRS": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "ULKER": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "VAKBN": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        },
+        "YKBNK": {
+          "duplicates": 0,
+          "evaluation_rows": 1867,
+          "rows": 1947,
+          "warmup_rows": 80
+        }
+      },
+      "symbols": 35,
+      "unique_rows": 68145,
+      "unique_timestamps": 1947,
+      "warmup_rows": 2800
+    },
+    "1d": {
+      "duplicates": 0,
+      "evaluation_rows": 1925,
+      "raw_end": "2026-09-10T06:30:00+00:00",
+      "raw_start": "2021-09-10T06:30:00+00:00",
+      "rows_per_symbol": {
+        "AKBNK": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "ARCLK": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "ASELS": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "BIMAS": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1258,
+          "warmup_rows": 1203
+        },
+        "CCOLA": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1256,
+          "warmup_rows": 1201
+        },
+        "CIMSA": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "DOAS": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "EKGYO": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "ENKAI": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "EREGL": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1256,
+          "warmup_rows": 1201
+        },
+        "FROTO": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1256,
+          "warmup_rows": 1201
+        },
+        "GARAN": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "GUBRF": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "HALKB": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "ISCTR": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "KCHOL": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "KRDMD": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "MAVI": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1256,
+          "warmup_rows": 1201
+        },
+        "MGROS": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "PETKM": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "PGSUS": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1256,
+          "warmup_rows": 1201
+        },
+        "SAHOL": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "SASA": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1256,
+          "warmup_rows": 1201
+        },
+        "SISE": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "TAVHL": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "TCELL": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "THYAO": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "TKFEN": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1256,
+          "warmup_rows": 1201
+        },
+        "TOASO": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "TSKB": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "TTKOM": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "TUPRS": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "ULKER": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "VAKBN": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        },
+        "YKBNK": {
+          "duplicates": 0,
+          "evaluation_rows": 55,
+          "rows": 1255,
+          "warmup_rows": 1200
+        }
+      },
+      "symbols": 35,
+      "unique_rows": 43935,
+      "unique_timestamps": 1258,
+      "warmup_rows": 42010
+    },
+    "1h": {
+      "duplicates": 0,
+      "evaluation_rows": 17850,
+      "raw_end": "2026-09-10T15:00:00+00:00",
+      "raw_start": "2023-10-23T06:30:00+00:00",
+      "rows_per_symbol": {
+        "AKBNK": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "ARCLK": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "ASELS": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "BIMAS": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "CCOLA": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "CIMSA": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "DOAS": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "EKGYO": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "ENKAI": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "EREGL": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "FROTO": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "GARAN": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "GUBRF": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "HALKB": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "ISCTR": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "KCHOL": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "KRDMD": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "MAVI": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "MGROS": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "PETKM": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "PGSUS": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "SAHOL": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "SASA": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "SISE": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "TAVHL": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "TCELL": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "THYAO": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "TKFEN": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "TOASO": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "TSKB": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "TTKOM": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "TUPRS": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "ULKER": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "VAKBN": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        },
+        "YKBNK": {
+          "duplicates": 0,
+          "evaluation_rows": 510,
+          "rows": 6250,
+          "warmup_rows": 5740
+        }
+      },
+      "symbols": 35,
+      "unique_rows": 218750,
+      "unique_timestamps": 6250,
+      "warmup_rows": 200900
+    }
+  }
+}
