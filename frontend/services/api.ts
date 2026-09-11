@@ -18,9 +18,15 @@ export const api = {
   candles: (symbol: string, timeframe = "15m") =>
     get<Candle[]>(`/candles/${symbol}?timeframe=${timeframe}`),
   dataHealth: () => get<DataHealth>("/data-health"),
+  telegramStatus: () => get<{enabled:boolean;configured:boolean;signal_alerts:boolean}>("/telegram/status"),
   strategyHealth: () => get<StrategyHealth>("/strategy-health"),
   forwardStatus: () => get<ForwardStatus>("/forward/status"),
   settings: () => get<Record<string, number>>("/settings"),
+  telegramTest: async () => {
+    const r = await fetch(`${API}/telegram/test`, { method: "POST" });
+    if (!r.ok) throw new Error("Telegram test mesajı gönderilemedi");
+    return r.json();
+  },
   scan: async () => {
     const r = await fetch(`${API}/scanner/run`, { method: "POST" });
     if (!r.ok) throw new Error("Tarama başlatılamadı");
