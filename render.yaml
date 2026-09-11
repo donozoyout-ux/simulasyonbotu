@@ -36,6 +36,14 @@ services:
         value: "70"
       - key: AI_TIMEOUT_SECONDS
         value: "25"
+      - key: TELEGRAM_ENABLED
+        value: "true"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: TELEGRAM_SIGNAL_ALERTS
+        value: "true"
       - key: TWELVE_DATA_API_KEY
         sync: false
       - key: EODHD_API_TOKEN
