@@ -352,6 +352,14 @@ export function DashboardShell() {
                 );
               }
             }}
+            onTelegramTest={async () => {
+              try {
+                await api.telegramTest();
+                setMessage("Telegram test mesajı gönderildi");
+              } catch {
+                setMessage("Telegram test başarısız — Render env ayarlarını kontrol et");
+              }
+            }}
             onReset={async () => {
               if (
                 window.prompt("Onay için RESET PAPER PORTFOLIO yazın") !==
@@ -1421,11 +1429,13 @@ function SettingsView({
   values,
   setValues,
   onSave,
+  onTelegramTest,
   onReset,
 }: {
   values: Record<string, number>;
   setValues: (v: Record<string, number>) => void;
   onSave: () => void;
+  onTelegramTest: () => void;
   onReset: () => void;
 }) {
   const fields: [string, string, string, number][] = [
@@ -1466,6 +1476,9 @@ function SettingsView({
         </div>
         <button className="save" onClick={onSave}>
           Ayarları kaydet
+        </button>
+        <button className="save" onClick={onTelegramTest}>
+          Telegram test mesajı gönder
         </button>
       </article>
       <aside className="panel warning-box">
