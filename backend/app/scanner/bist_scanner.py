@@ -54,7 +54,9 @@ def get_provider(config:AppSettings)->MarketDataProvider:
     if name=="yahoo":return YahooMarketDataProvider()
     if name=="eodhd":return EodhdHistoricalProvider(config.eodhd_api_token or "")
     if name=="twelvedata":return TwelveDataProvider(config.twelve_data_api_key or "")
-    if name in {"hybrid","dual","twelvedata+yahoo","twelve+yahoo"}:\n        return HybridMarketDataProvider(config.twelve_data_api_key or "", config.hybrid_price_tolerance_pct)\n    raise ValueError(f"Bilinmeyen market data provider: {config.market_data_provider}")
+    if name in {"hybrid","dual","twelvedata+yahoo","twelve+yahoo"}:
+        return HybridMarketDataProvider(config.twelve_data_api_key or "", config.hybrid_price_tolerance_pct)
+    raise ValueError(f"Bilinmeyen market data provider: {config.market_data_provider}")
 
 
 class BistScanner:
