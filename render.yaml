@@ -11,7 +11,13 @@ services:
       - key: DATA_MODE
         value: live
       - key: MARKET_DATA_PROVIDER
-        value: yahoo
+        value: hybrid
+      - key: AI_ENABLED
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
       - key: TWELVE_DATA_API_KEY
         sync: false
       - key: EODHD_API_TOKEN
@@ -33,7 +39,13 @@ services:
       - key: DATA_MODE
         value: live
       - key: MARKET_DATA_PROVIDER
-        value: yahoo
+        value: hybrid
+      - key: AI_ENABLED
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
       - key: TWELVE_DATA_API_KEY
         sync: false
       - key: EODHD_API_TOKEN
