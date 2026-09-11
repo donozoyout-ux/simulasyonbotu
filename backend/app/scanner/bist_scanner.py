@@ -141,7 +141,7 @@ class BistScanner:
             "trigger_15m_timestamp":context.get("entry_candle_time")})
         return analysis,result,assessment
 
-    def _manage_positions(self):
+    def _manage_positions(self, timeframe: str = "5m"):
         portfolio=ensure_portfolio(self.db,self.config.initial_balance)
         run=self.forward_run
         broker=PaperBroker(self.db,self.runtime["commission_rate"],self.runtime["slippage_rate"],self.config.intrabar_policy,
@@ -151,10 +151,23 @@ class BistScanner:
             Position.status=="OPEN", Position.run_id==run.run_id if run else Position.run_id.is_(None)
         ))):
             try:
-                candle=self.provider.get_candles(position.symbol,"15m",2)[-1]
+                candle=self.provider.get_candles(position.symbol,timeframe,2)[-1]
                 broker.evaluate_candle(portfolio,position,candle)
-                self._log("POSITION","RE_EVALUATED",f"OHLC {candle.open}/{candle.high}/{candle.low}/{candle.close}",position.symbol)
+                self._log("POSITION","RE_EVALUATED",f"{timeframe} OHLC {candle.open}/{candle.high}/{candle.low}/{candle.close}",position.symbol)
             except Exception as exc:self._log("DATA_PROVIDER_ERROR","NO_TRADE",f"Pozisyon değişmedi: {exc}",position.symbol)
+
+    def manage_positions_only(self, timeframe: str = "5m") -> dict:
+        self.forward_run=ensure_forward_run(self.db,self.config)
+        before=list(self.db.scalars(select(Position.id).where(
+            Position.status=="OPEN",Position.run_id==self.forward_run.run_id
+        )).all())
+        self._manage_positions(timeframe)
+        take_snapshot(self.db,self.config.initial_balance,self.forward_run.run_id)
+        upsert_daily_summary(self.db,self.config,self.forward_run)
+        after=list(self.db.scalars(select(Position.id).where(
+            Position.status=="OPEN",Position.run_id==self.forward_run.run_id
+        )).all())
+        return {"status":"positions_checked","timeframe":timeframe,"open_before":len(before),"open_after":len(after)}
 
     def _try_entries(self,items,funnel:dict,allow_entries:bool=True)->None:
         portfolio=ensure_portfolio(self.db,self.config.initial_balance)
