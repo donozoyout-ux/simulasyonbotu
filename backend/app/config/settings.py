@@ -45,6 +45,9 @@ class AppSettings(BaseSettings):
     operation_mode: str = "LIVE_PAPER"
     live_strategy_version: str = "V3_FROZEN_1"
     worker_poll_seconds: int = 20
+    embedded_worker_enabled: bool = True
+    market_open_poll_seconds: int = 300
+    after_hours_poll_seconds: int = 900
     ai_enabled: bool = True
     ai_provider: str = "groq"
     groq_api_key: SecretStr | None = None
