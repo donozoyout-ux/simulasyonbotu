@@ -24,6 +24,7 @@ from app.portfolio.risk_manager import size_position
 from app.scanner.watchlist_manager import update_watchlist
 from app.scanner.universe_builder import UniverseBuilder
 from app.services.forward_test import ensure_forward_run,upsert_daily_summary
+from app.services.ai_analyst import AIAnalyst
 from app.research.v4 import strategy_config_snapshot
 
 logger=logging.getLogger("SCANNER")
@@ -103,6 +104,7 @@ class BistScanner:
         frames=self._data(symbol);source="mock" if self.config.data_mode=="mock" else self.provider.name
         result=analyze_frames(symbol,frames,self.analysis_config,source,analysis_at,self.require_market_session)
         details=json_safe(result.details)
+        details["ai"]=AIAnalyst(self.config).analyze(symbol,result.score,result.decision,details)
         summary=portfolio_summary(self.db,self.config.initial_balance)
         assessment=self.universe.assess(symbol,frames,summary["portfolio_value"])
         analysis=Analysis(symbol=symbol,price=result.price,score=result.score,trend=result.trend,market_structure=result.market_structure,
