@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.config.logging import configure_logging
@@ -41,10 +43,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get("/", include_in_schema=False)
-def root():
-    return RedirectResponse(url=settings.frontend_url, status_code=307)
-
-
+# API routes are registered first so /api/* and /docs keep working.
 app.include_router(router, prefix=settings.api_prefix)
+
+frontend_dir = Path(__file__).resolve().parents[2] / "frontend_out"
+
+if frontend_dir.exists():
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+else:
+    @app.get("/", include_in_schema=False)
+    def root():
+        return JSONResponse(
+            {
+                "status": "backend_ready",
+                "message": "Frontend build not found. In production the root Dockerfile builds and bundles it.",
+                "docs": "/docs",
+            }
+        )
