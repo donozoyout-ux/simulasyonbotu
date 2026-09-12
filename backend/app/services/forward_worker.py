@@ -136,7 +136,7 @@ class ForwardWorker:
                 }
 
         try:
-            result = scanner.run(max_symbols, stamp)
+            result = scanner.run(max_symbols or self.config.scanner_symbol_limit, stamp)
             scan = self.db.scalar(
                 select(ScanRun)
                 .where(
