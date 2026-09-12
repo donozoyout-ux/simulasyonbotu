@@ -196,6 +196,47 @@ def scanner_results(db: Session = Depends(get_db)):
     return dump(sorted(result, key=lambda x: x.score, reverse=True))
 
 
+@router.get("/scanner/status")
+def scanner_status(db: Session = Depends(get_db)):
+    run=current_run(db);session=BistMarketSession.from_config(config);now=datetime.now(timezone.utc)
+    scans=list(db.scalars(select(ScanRun).where(ScanRun.run_id==run.run_id).order_by(desc(ScanRun.started_at)).limit(10)).all())
+    last=scans[0] if scans else None
+    analyses_count=db.scalar(select(func.count()).select_from(Analysis).where(Analysis.run_id==run.run_id)) or 0
+    watch_count=db.scalar(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.run_id==run.run_id)) or 0
+    latest_rows=db.scalars(select(Analysis).where(Analysis.run_id==run.run_id).order_by(desc(Analysis.analyzed_at)).limit(500)).all()
+    latest_symbols=len({row.symbol for row in latest_rows})
+    if last is None:status="NO_SCAN"
+    elif last.completed_at is None:status="RUNNING"
+    elif last.failed_symbols:status="COMPLETE_WITH_ERRORS"
+    else:status="COMPLETE"
+    return dump({
+        "status":status,
+        "market_status":"MARKET OPEN" if session.is_open(now) else "MARKET CLOSED",
+        "provider":config.market_data_provider,
+        "auto_worker":config.embedded_worker_enabled,
+        "scanner_symbol_limit":config.scanner_symbol_limit,
+        "manual_scan_symbol_limit":config.manual_scan_symbol_limit,
+        "watchlist_score":config.watchlist_score,
+        "entry_score":config.entry_score,
+        "watchlist_count":watch_count,
+        "latest_analysis_symbols":latest_symbols,
+        "analysis_rows":analyses_count,
+        "last_scan":None if last is None else {
+            "started_at":last.started_at,"completed_at":last.completed_at,"duration_ms":last.duration_ms,
+            "total_symbols":last.total_symbols,"valid_symbols":last.valid_symbols,"failed_symbols":last.failed_symbols,
+            "stale_symbols":last.stale_symbols,"watchlist_count":last.watchlist_count,"signals":last.signals,
+            "entries":last.entries,"errors":last.errors[:20] if last.errors else [],
+            "funnel":last.funnel or {}
+        },
+        "recent_scans":[{
+            "id":item.id,"started_at":item.started_at,"completed_at":item.completed_at,
+            "total_symbols":item.total_symbols,"valid_symbols":item.valid_symbols,
+            "failed_symbols":item.failed_symbols,"watchlist_count":item.watchlist_count,
+            "signals":item.signals,"entries":item.entries
+        } for item in scans]
+    })
+
+
 @router.get("/analysis/{symbol}")
 def analysis(symbol: str, db: Session = Depends(get_db)):
     run=current_run(db);row = db.scalar(select(Analysis).where(Analysis.symbol == symbol.upper(),Analysis.run_id==run.run_id).order_by(desc(Analysis.analyzed_at)).limit(1))
@@ -262,7 +303,8 @@ def decisions(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_d
 def scanner_run(max_symbols: int | None = Query(None, ge=1, le=100), db: Session = Depends(get_db)):
     if config.data_mode=="live" and not BistMarketSession.from_config(config).is_open():
         return {"status":"market_closed","analyzed":0,"errors":[],"results":[]}
-    return BistScanner(db, config).run(max_symbols)
+    limit=max_symbols or config.manual_scan_symbol_limit
+    return BistScanner(db, config).run(limit)
 
 
 @router.get("/settings")
