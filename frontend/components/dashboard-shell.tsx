@@ -1042,6 +1042,149 @@ function Watchlist({
   );
 }
 
+function ScannerCenter({
+  status,
+  analyses,
+  loading,
+  onScan,
+  onSelect,
+}: {
+  status?: ScannerStatus;
+  analyses: Analysis[];
+  loading: boolean;
+  onScan: (maxSymbols?: number) => Promise<void>;
+  onSelect: (s: string) => void;
+}) {
+  const last = status?.last_scan;
+  return (
+    <div className="settings-grid">
+      <article className="panel">
+        <PanelTitle
+          title="Tarama Merkezi"
+          sub="Botun hangi hisseleri analiz ettiğini, neden elediğini ve takip listesine ne taşıdığını burada gör"
+        />
+        <div className="strategy-grid">
+          <div>
+            <span>Scanner</span>
+            <b>{status?.status || "BEKLENIYOR"}</b>
+            <small>{status?.market_status || "—"}</small>
+          </div>
+          <div>
+            <span>Batch</span>
+            <b>{status?.scanner_symbol_limit ?? 30} sembol</b>
+            <small>Her 15M turunda rotasyonlu tarama</small>
+          </div>
+          <div>
+            <span>Son Tur</span>
+            <b>{last?.total_symbols ?? 0}</b>
+            <small>{last?.valid_symbols ?? 0} geçerli • {last?.failed_symbols ?? 0} hatalı</small>
+          </div>
+          <div>
+            <span>Takip Listesi</span>
+            <b>{status?.watchlist_count ?? 0}</b>
+            <small>≥ {status?.watchlist_score ?? 70} • entry ≥ {status?.entry_score ?? 82}</small>
+          </div>
+          <div>
+            <span>Analiz Edilmiş</span>
+            <b>{status?.latest_analysis_symbols ?? analyses.length}</b>
+            <small>Son snapshot'ı bulunan sembol</small>
+          </div>
+          <div>
+            <span>Son Tarama</span>
+            <b>{last?.completed_at ? fmtDate(last.completed_at) : last?.started_at ? "Çalışıyor" : "—"}</b>
+            <small>{last?.duration_ms ? (last.duration_ms / 1000).toFixed(1) + " sn" : "Henüz tamamlanmadı"}</small>
+          </div>
+        </div>
+        <div className="header-actions" style={{ marginTop: "1rem", justifyContent: "flex-start" }}>
+          <button
+            className="scan"
+            disabled={loading || status?.market_status !== "MARKET OPEN"}
+            onClick={() => void onScan(status?.manual_scan_symbol_limit ?? 10)}
+          >
+            <RefreshCw size={16} className={loading ? "spin" : ""} />
+            {loading ? "Taranıyor" : (status?.manual_scan_symbol_limit ?? 10) + " hisse test tara"}
+          </button>
+          <button
+            className="pause-control"
+            disabled={loading || status?.market_status !== "MARKET OPEN"}
+            onClick={() => void onScan(status?.scanner_symbol_limit ?? 30)}
+          >
+            <RefreshCw size={15} />
+            Batch taraması
+          </button>
+        </div>
+        {last?.errors?.length ? (
+          <div className="health-errors" style={{ marginTop: "1rem" }}>
+            <b>Son tarama hataları</b>
+            {last.errors.slice(0, 8).map((item) => (
+              <p key={item.symbol + "-" + item.error}>
+                <b>{item.symbol}</b> {item.error}
+              </p>
+            ))}
+          </div>
+        ) : null}
+      </article>
+
+      <article className="panel table-panel">
+        <PanelTitle
+          title="Taranan Hisseler"
+          sub={analyses.length + " sembol • takip listesine girmese bile son analiz sonucu görünür"}
+        />
+        {analyses.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sembol</th>
+                  <th>Fiyat</th>
+                  <th>Skor</th>
+                  <th>Karar</th>
+                  <th>Setup</th>
+                  <th>1D Trend</th>
+                  <th>1H Yapı</th>
+                  <th>RSI</th>
+                  <th>RVOL</th>
+                  <th>R/R</th>
+                  <th>AI</th>
+                  <th>Haber</th>
+                  <th>Neden</th>
+                  <th>Güncelleme</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analyses.map((a) => (
+                  <tr key={a.symbol} onClick={() => onSelect(a.symbol)}>
+                    <td><b>{a.symbol}</b></td>
+                    <td>{money(a.price)}</td>
+                    <td><Score value={a.score} /></td>
+                    <td><Tag text={a.decision} /></td>
+                    <td>{a.setup}</td>
+                    <td>{a.trend}</td>
+                    <td>{a.market_structure}</td>
+                    <td>{a.details.indicators?.rsi?.toFixed(1) ?? "—"}</td>
+                    <td>{a.details.volume?.rvol?.toFixed(2) ?? "—"}x</td>
+                    <td>{a.details.risk_reward?.toFixed(2) ?? "—"}</td>
+                    <td>{a.ai_result?.verdict || a.ai_status || "—"}</td>
+                    <td>{a.details.news?.items?.[0]?.ai_sentiment || "NO_NEWS"}</td>
+                    <td>{a.reason}</td>
+                    <td>{fmtDate(a.analyzed_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            icon={RefreshCw}
+            title="Henüz analiz snapshot'ı yok"
+            text="Piyasa açıksa 10 hisse test taraması başlat. Sonuçlar takip listesi eşiğinin altında kalsa bile burada görünür."
+          />
+        )}
+      </article>
+    </div>
+  );
+}
+
 function AnalysisViewGroq({
   analyses,
   chosen,
