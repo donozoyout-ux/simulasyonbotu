@@ -76,6 +76,17 @@ class AppSettings(BaseSettings):
             return value.replace("postgresql://", "postgresql+psycopg://", 1)
         return value
 
+    @field_validator("market_data_provider", mode="before")
+    @classmethod
+    def normalize_market_data_provider(cls, value: str) -> str:
+        """Normalize the legacy Render typo without changing provider policy."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized == "yaho":
+                return "yahoo"
+            return normalized
+        return value
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
