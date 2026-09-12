@@ -176,6 +176,45 @@ export type DataHealth = {
   errors: Array<{ symbol: string; error: string }>;
   funnel?: Record<string, number>;
 };
+export type ScannerStatus = {
+  status: "NO_SCAN" | "RUNNING" | "COMPLETE" | "COMPLETE_WITH_ERRORS";
+  market_status: "MARKET OPEN" | "MARKET CLOSED";
+  provider: string;
+  auto_worker: boolean;
+  scanner_symbol_limit: number;
+  manual_scan_symbol_limit: number;
+  watchlist_score: number;
+  entry_score: number;
+  watchlist_count: number;
+  latest_analysis_symbols: number;
+  analysis_rows: number;
+  last_scan?: {
+    started_at: string;
+    completed_at?: string;
+    duration_ms?: number;
+    total_symbols: number;
+    valid_symbols: number;
+    failed_symbols: number;
+    stale_symbols: number;
+    watchlist_count: number;
+    signals: number;
+    entries: number;
+    errors: Array<{symbol:string;error:string}>;
+    funnel: Record<string,number>;
+  };
+  recent_scans: Array<{
+    id:number;
+    started_at:string;
+    completed_at?:string;
+    total_symbols:number;
+    valid_symbols:number;
+    failed_symbols:number;
+    watchlist_count:number;
+    signals:number;
+    entries:number;
+  }>;
+};
+
 export type StrategyHealth = {
   status: string;
   dataset?: {
