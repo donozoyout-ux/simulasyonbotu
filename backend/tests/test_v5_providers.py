@@ -11,7 +11,7 @@ from app.market_data.cache import HistoricalCandleCache, redact_secret
 from app.market_data.eodhd_provider import EodhdHistoricalProvider
 from app.market_data.provider import CandleData, DataValidationError
 from app.market_data.twelvedata_provider import TwelveDataProvider
-from app.market_data.yahoo_provider import YahooMarketDataProvider
+from app.market_data.hybrid_provider import HybridMarketDataProvider
 from app.market_data.market_session import BistMarketSession
 from app.research.provider_qualification import cross_provider_comparison, daily_intraday_continuity
 from app.research.generalization import evaluate_v3_findings
@@ -111,10 +111,10 @@ def test_missing_paid_provider_credential_fails_closed_without_mock_fallback():
         get_provider(AppSettings(data_mode="live",market_data_provider="twelvedata",twelve_data_api_key=None))
 
 
-def test_legacy_render_yaho_typo_normalizes_to_yahoo():
-    settings=AppSettings(_env_file=None,market_data_provider=" yaho ")
-    assert settings.market_data_provider=="yahoo"
-    assert isinstance(get_provider(settings),YahooMarketDataProvider)
+def test_legacy_render_yaho_typo_normalizes_to_declared_hybrid_policy():
+    settings=AppSettings(_env_file=None,market_data_provider=" yaho ",twelve_data_api_key="secret")
+    assert settings.market_data_provider=="hybrid"
+    assert isinstance(get_provider(settings),HybridMarketDataProvider)
 
 
 def test_generalization_labels_insufficient_samples_without_inventing_conclusions():

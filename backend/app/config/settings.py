@@ -81,11 +81,11 @@ class AppSettings(BaseSettings):
     @field_validator("market_data_provider", mode="before")
     @classmethod
     def normalize_market_data_provider(cls, value: str) -> str:
-        """Normalize the legacy Render typo without changing provider policy."""
+        """Normalize the legacy Render typo to the declared production policy."""
         if isinstance(value, str):
             normalized = value.strip().lower()
             if normalized == "yaho":
-                return "yahoo"
+                return "hybrid"
             return normalized
         return value
 
