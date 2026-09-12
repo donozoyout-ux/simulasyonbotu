@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -97,6 +97,7 @@ const fmtDate = (v: string) =>
   }).format(new Date(v));
 
 export function DashboardShell() {
+  const scanInFlight = useRef(false);
   const [view, setView] = useState<View>("Genel Bakış"),
     [portfolio, setPortfolio] = useState(seedPortfolio),
     [forward, setForward] = useState<ForwardStatus>(),
@@ -196,15 +197,18 @@ export function DashboardShell() {
       .catch(() => setCandles([]));
   }, [selected, timeframe]);
   const scan = async (maxSymbols?: number) => {
+    if (scanInFlight.current) return;
+    scanInFlight.current = true;
     setLoading(true);
     setMessage("BIST taranıyor…");
     try {
-      await api.scan(maxSymbols);
+      const result = await api.scan(maxSymbols);
       await load();
-      setMessage("Tarama tamamlandı");
+      setMessage(result.status === "market_closed" ? "Piyasa kapalı — yeni trading scan başlatılmadı" : "Tarama tamamlandı");
     } catch {
       setMessage("Tarama başlatılamadı — backend durumunu kontrol edin");
     } finally {
+      scanInFlight.current = false;
       setLoading(false);
     }
   };
@@ -960,7 +964,7 @@ function Watchlist({
           <ListFilter size={18} />
           <span>
             <b>Henüz 70+ skorlu aday yok.</b>
-            Tarama yapılmıyor anlamına gelmez; tüm taranan hisseleri ve eleme nedenlerini Tarama Merkezi'nde görebilirsin.
+            Tarama yapılmıyor anlamına gelmez; tüm taranan hisseleri ve eleme nedenlerini Tarama Merkezi’nde görebilirsin.
           </span>
         </div>
       ) : null}
@@ -1066,7 +1070,7 @@ function ScannerCenter({
 }) {
   const last = status?.last_scan;
   return (
-    <div className="settings-grid">
+    <div className="scanner-center">
       <article className="panel">
         <PanelTitle
           title="Tarama Merkezi"
@@ -1084,9 +1088,14 @@ function ScannerCenter({
             <small>Her 15M turunda rotasyonlu tarama</small>
           </div>
           <div>
+            <span>Provider / Worker</span>
+            <b>{status?.provider?.toUpperCase() || "—"}</b>
+            <small>{status?.auto_worker ? "Auto worker aktif" : "Auto worker kapalı"}</small>
+          </div>
+          <div>
             <span>Son Tur</span>
             <b>{last?.total_symbols ?? 0}</b>
-            <small>{last?.valid_symbols ?? 0} geçerli • {last?.failed_symbols ?? 0} hatalı</small>
+            <small>{last?.valid_symbols ?? 0} geçerli • {last?.failed_symbols ?? 0} hatalı • {last?.stale_symbols ?? 0} stale</small>
           </div>
           <div>
             <span>Takip Listesi</span>
@@ -1096,12 +1105,27 @@ function ScannerCenter({
           <div>
             <span>Analiz Edilmiş</span>
             <b>{status?.latest_analysis_symbols ?? analyses.length}</b>
-            <small>Son snapshot'ı bulunan sembol</small>
+            <small>Son snapshot’ı bulunan sembol</small>
           </div>
           <div>
             <span>Son Tarama</span>
             <b>{last?.completed_at ? fmtDate(last.completed_at) : last?.started_at ? "Çalışıyor" : "—"}</b>
             <small>{last?.duration_ms ? (last.duration_ms / 1000).toFixed(1) + " sn" : "Henüz tamamlanmadı"}</small>
+          </div>
+          <div>
+            <span>Tarama Başlangıcı</span>
+            <b>{last?.started_at ? fmtDate(last.started_at) : "—"}</b>
+            <small>{last?.completed_at ? `Bitiş: ${fmtDate(last.completed_at)}` : "Bitiş bekleniyor"}</small>
+          </div>
+          <div>
+            <span>Sinyal / Emir</span>
+            <b>{last?.signals ?? 0} / {last?.entries ?? 0}</b>
+            <small>82+ aday ve açılan paper emir</small>
+          </div>
+          <div>
+            <span>Sonraki Otomatik Tarama</span>
+            <b>{status?.next_automatic_scan ? fmtDate(status.next_automatic_scan) : "—"}</b>
+            <small>Yeni kapanmış 15M mumda</small>
           </div>
         </div>
         <div className="header-actions" style={{ marginTop: "1rem", justifyContent: "flex-start" }}>
@@ -1122,6 +1146,12 @@ function ScannerCenter({
             Batch taraması
           </button>
         </div>
+        {status?.market_status === "MARKET CLOSED" ? (
+          <div className="health-banner warn" style={{ marginTop: "1rem" }}>
+            <RefreshCw size={18} />
+            <span><b>Piyasa kapalı — yeni trading scan başlatılmaz.</b> Worker maintenance, haber ve benchmark kontrollerini sürdürür.</span>
+          </div>
+        ) : null}
         {last?.errors?.length ? (
           <div className="health-errors" style={{ marginTop: "1rem" }}>
             <b>Son tarama hataları</b>
@@ -1152,8 +1182,11 @@ function ScannerCenter({
                   <th>1D Trend</th>
                   <th>1H Yapı</th>
                   <th>RSI</th>
+                  <th>MACD</th>
                   <th>RVOL</th>
+                  <th>ATR</th>
                   <th>R/R</th>
+                  <th>Relative Strength</th>
                   <th>AI</th>
                   <th>Haber</th>
                   <th>Neden</th>
@@ -1171,11 +1204,14 @@ function ScannerCenter({
                     <td>{a.trend}</td>
                     <td>{a.market_structure}</td>
                     <td>{a.details.indicators?.rsi?.toFixed(1) ?? "—"}</td>
-                    <td>{a.details.volume?.rvol?.toFixed(2) ?? "—"}x</td>
+                    <td>{a.details.indicators?.macd?.histogram?.toFixed(2) ?? "—"}</td>
+                    <td>{a.details.volume?.rvol != null ? `${a.details.volume.rvol.toFixed(2)}x` : "—"}</td>
+                    <td>{a.details.volatility?.atr?.toFixed(2) ?? "—"}</td>
                     <td>{a.details.risk_reward?.toFixed(2) ?? "—"}</td>
+                    <td>{a.details.relative_strength?.label || "NO_DATA"}</td>
                     <td>{a.ai_result?.verdict || a.ai_status || "—"}</td>
                     <td>{a.details.news?.items?.[0]?.ai_sentiment || "NO_NEWS"}</td>
-                    <td>{a.reason}</td>
+                    <td>{a.details.universe && a.details.universe.status !== "TRADABLE" ? `${a.details.universe.status}: ${a.details.universe.reason}` : a.reason}</td>
                     <td>{fmtDate(a.analyzed_at)}</td>
                   </tr>
                 ))}

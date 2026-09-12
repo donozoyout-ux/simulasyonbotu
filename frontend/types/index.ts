@@ -63,6 +63,7 @@ export type Analysis = {
     setup_quality?: number;
     setup_reason?: string;
     setup_rejections?: string[];
+    universe?: { status: string; reason: string; affordable: boolean };
     technical_score?: number;
     indicators?: IndicatorSnapshot;
     relative_strength?: RelativeStrength;
@@ -185,6 +186,7 @@ export type ScannerStatus = {
   manual_scan_symbol_limit: number;
   watchlist_score: number;
   entry_score: number;
+  next_automatic_scan?: string | null;
   watchlist_count: number;
   latest_analysis_symbols: number;
   analysis_rows: number;
@@ -201,7 +203,7 @@ export type ScannerStatus = {
     entries: number;
     errors: Array<{symbol:string;error:string}>;
     funnel: Record<string,number>;
-  };
+  } | null;
   recent_scans: Array<{
     id:number;
     started_at:string;
@@ -212,6 +214,21 @@ export type ScannerStatus = {
     watchlist_count:number;
     signals:number;
     entries:number;
+  }>;
+};
+
+export type ScannerRunResponse = {
+  status: "completed" | "market_closed" | "already_running" | "wrong_mode";
+  analyzed: number;
+  duration_ms?: number;
+  errors: Array<{ symbol: string; error: string }>;
+  funnel?: Record<string, number>;
+  results: Array<{
+    symbol: string;
+    score: number;
+    decision: string;
+    source: string;
+    universe_status: string;
   }>;
 };
 

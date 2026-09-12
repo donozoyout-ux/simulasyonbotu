@@ -54,4 +54,4 @@ class HistoricalCandleCache:
 
 
 def redact_secret(value: str) -> str:
-    return re.sub(r"(?i)(apikey|api_token)=([^&\s]+)",r"\1=***",value)
+    return re.sub(r"(?i)(apikey|api_key|api_token|access_token|token)=([^&\s]+)",r"\1=***",value)

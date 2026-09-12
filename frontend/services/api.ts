@@ -1,4 +1,4 @@
-import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,NewsHealth,NewsItem,Portfolio,Position,ScannerStatus,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
+import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,NewsHealth,NewsItem,Portfolio,Position,ScannerRunResponse,ScannerStatus,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
 const API = "/api";
 
 async function get<T>(path: string): Promise<T> {
@@ -36,7 +36,7 @@ export const api = {
     const query = maxSymbols ? `?max_symbols=${maxSymbols}` : "";
     const r = await fetch(`${API}/scanner/run${query}`, { method: "POST" });
     if (!r.ok) throw new Error("Tarama başlatılamadı");
-    return r.json();
+    return r.json() as Promise<ScannerRunResponse>;
   },
   saveSettings: async (data: Record<string, number>) => {
     const r = await fetch(`${API}/settings`, {

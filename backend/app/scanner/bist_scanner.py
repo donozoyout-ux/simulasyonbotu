@@ -28,9 +28,14 @@ from app.scanner.universe_builder import UniverseBuilder
 from app.services.forward_test import ensure_forward_run,upsert_daily_summary
 from app.services.telegram import TelegramNotifier
 from app.research.v4 import strategy_config_snapshot
+from app.market_data.cache import redact_secret
 
 logger=logging.getLogger("SCANNER")
 _SCAN_LOCK=threading.Lock()
+
+
+def safe_provider_error(exc: Exception) -> str:
+    return redact_secret(str(exc))[:500] or type(exc).__name__
 
 
 def json_safe(value):
@@ -99,7 +104,7 @@ class BistScanner:
         for timeframe in ("1d","1h","15m"):
             try:frames[timeframe]=self.provider.get_candles(symbol,timeframe,220)
             except Exception as exc:
-                self._log("DATA_PROVIDER_ERROR","NO_TRADE",f"{timeframe}: {exc}",symbol,details={"timeframe":timeframe,"provider":self.provider.name})
+                self._log("DATA_PROVIDER_ERROR","NO_TRADE",f"{timeframe}: {safe_provider_error(exc)}",symbol,details={"timeframe":timeframe,"provider":self.provider.name})
                 raise
         return frames
 
@@ -153,6 +158,7 @@ class BistScanner:
             "news_score":max((row.ai_importance or 0 for row in news_rows),default=None)}
         summary=portfolio_summary(self.db,self.config.initial_balance)
         assessment=self.universe.assess(symbol,frames,summary["portfolio_value"])
+        details["universe"]={"status":assessment.status,"reason":assessment.reason,"affordable":assessment.affordable}
         analysis=Analysis(symbol=symbol,price=result.price,score=result.score,trend=result.trend,market_structure=result.market_structure,
             setup=result.setup,decision=result.decision,reason=result.reason,details=details,data_source=source,
             signal_candle_time=result.signal_candle_time,data_valid=result.funnel["data_valid"],
@@ -210,7 +216,7 @@ class BistScanner:
                         self.telegram.sell_message(trade.symbol,trade.quantity,trade.exit_price,trade.realized_pnl,trade.exit_reason),
                         trade.symbol,trade.signal_score
                     )
-            except Exception as exc:self._log("DATA_PROVIDER_ERROR","NO_TRADE",f"Pozisyon değişmedi: {exc}",position.symbol)
+            except Exception as exc:self._log("DATA_PROVIDER_ERROR","NO_TRADE",f"Pozisyon değişmedi: {safe_provider_error(exc)}",position.symbol)
 
     def manage_positions_only(self, timeframe: str = "5m") -> dict:
         self.forward_run=ensure_forward_run(self.db,self.config)
@@ -267,7 +273,7 @@ class BistScanner:
 
     def _run_cycle(self,max_symbols:int|None=None,closed_candle_timestamp:datetime|None=None)->dict:
         started=datetime.now(timezone.utc);clock=perf_counter();self.forward_run=ensure_forward_run(self.db,self.config)
-        symbols=self.universe.candidates(max_symbols)
+        symbols=self.universe.candidates(max_symbols,closed_candle_timestamp)
         funnel={"total":len(symbols),"data_valid":0,"sufficient_history":0,"htf_bullish":0,"valid_setup":0,"score_pass":0,"rr_pass":0,"risk_pass":0,"buy":0}
         run=ScanRun(started_at=started,provider=self.provider.name,data_mode=self.config.data_mode,total_symbols=len(symbols),valid_symbols=0,failed_symbols=0,stale_symbols=0,funnel={},errors=[],
             run_id=self.forward_run.run_id,timeframe="15m",closed_candle_timestamp=closed_candle_timestamp)
@@ -282,7 +288,8 @@ class BistScanner:
                 # A failed flush/commit poisons the SQLAlchemy transaction until
                 # rollback. One bad symbol must not prevent the remaining scan.
                 self.db.rollback()
-                errors.append({"symbol":symbol,"error":str(exc)});logger.exception("symbol_failed",extra={"symbol":symbol})
+                error=safe_provider_error(exc)
+                errors.append({"symbol":symbol,"error":error});logger.warning("symbol_failed symbol=%s error=%s",symbol,error)
         self._try_entries(items,funnel,allow_entries=not errors);take_snapshot(self.db,self.config.initial_balance,self.forward_run.run_id)
         upsert_daily_summary(self.db,self.config,self.forward_run)
         run.completed_at=datetime.now(timezone.utc);run.duration_ms=round((perf_counter()-clock)*1000);run.valid_symbols=len(items);run.failed_symbols=len(errors);run.funnel=funnel;run.errors=errors

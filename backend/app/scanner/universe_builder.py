@@ -38,13 +38,13 @@ class UniverseBuilder:
         ordered = small_mid + large_caps + extras
         return ordered or discovered
 
-    def candidates(self, max_symbols: int | None = None) -> list[str]:
+    def candidates(self, max_symbols: int | None = None, at: datetime | None = None) -> list[str]:
         symbols = self._ordered_symbols()
         if not max_symbols or max_symbols >= len(symbols):
             return symbols
 
         # Rotate every strategy candle so a bounded batch eventually covers the whole universe.
-        slot = int(datetime.now(timezone.utc).timestamp() // (15 * 60))
+        slot = int((at or datetime.now(timezone.utc)).astimezone(timezone.utc).timestamp() // (15 * 60))
         start = (slot * max_symbols) % len(symbols)
         end = start + max_symbols
         if end <= len(symbols):

@@ -112,23 +112,16 @@ class HybridMarketDataProvider(MarketDataProvider):
                 }
             return primary
 
-        # Bulk 15m scanner + higher timeframes prefer Yahoo. Calling Twelve once
-        # per scanned symbol would exceed the free tier (8 API credits/minute).
-        # Twelve remains the live 5m source and fallback for scanner timeframes.
+        # Bulk 15m scanner + higher timeframes are Yahoo-only. Falling back to
+        # Twelve once per timeframe/symbol would exhaust the free tier during a
+        # provider incident. Twelve remains primary only for bounded 5m position
+        # management, where a 429 safely falls back to Yahoo above.
         try:
             candles = self.yahoo.get_candles(symbol, timeframe, limit)
             self.last_sources[f"{symbol}:{timeframe}"] = "yahoo"
             return candles
         except Exception as yahoo_error:
-            try:
-                candles = self.twelve.get_candles(symbol, timeframe, limit)
-                self.last_sources[f"{symbol}:{timeframe}"] = "twelvedata_fallback"
-                return candles
-            except Exception as twelve_error:
-                raise DataValidationError(
-                    f"{symbol} {timeframe}: Yahoo ve Twelve Data başarısız; "
-                    f"Yahoo={yahoo_error}; Twelve={twelve_error}"
-                ) from None
+            raise DataValidationError(f"{symbol} {timeframe}: Yahoo başarısız; {yahoo_error}") from None
 
     def get_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[CandleData]:
         key=(symbol.upper(),timeframe.lower(),limit);cached=_LIVE_CACHE.get(key);now=monotonic()
