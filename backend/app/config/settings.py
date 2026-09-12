@@ -41,6 +41,8 @@ class AppSettings(BaseSettings):
     intrabar_policy: str = "conservative"
     strategy_version: str = "v3"
     scan_interval_minutes: int = 15
+    scanner_symbol_limit: int = 30
+    manual_scan_symbol_limit: int = 10
     auto_scan_enabled: bool = False
     operation_mode: str = "LIVE_PAPER"
     live_strategy_version: str = "V3_FROZEN_1"
