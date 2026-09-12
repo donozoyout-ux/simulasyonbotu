@@ -955,6 +955,15 @@ function Watchlist({
         title="Otomatik Takip Listesi"
         sub={`${rows.length} aday • puana göre sıralı`}
       />
+      {!rows.length ? (
+        <div className="health-banner warn" style={{ marginBottom: "1rem" }}>
+          <ListFilter size={18} />
+          <span>
+            <b>Henüz 70+ skorlu aday yok.</b>
+            Tarama yapılmıyor anlamına gelmez; tüm taranan hisseleri ve eleme nedenlerini Tarama Merkezi'nde görebilirsin.
+          </span>
+        </div>
+      ) : null}
       <div className="table-scroll">
         <table>
           <thead>
