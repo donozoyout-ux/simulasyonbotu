@@ -104,7 +104,17 @@ class NewsService:
                     digest=content_hash(record.source,record.title,record.content,record.url)
                     exists=self.db.scalar(select(NewsItem).where(or_(NewsItem.content_hash==digest,
                         (NewsItem.source==record.source)&(NewsItem.source_id==record.source_id))))
-                    if exists: exists.updated_at=now; duplicates+=1; continue
+                    if exists:
+                        exists.updated_at=now
+                        if exists.symbol!=symbol:
+                            prior_symbol=exists.symbol;exists.symbol=symbol;exists.company_name=company_name
+                            stale_reactions=self.db.scalars(select(NewsMarketReaction).where(NewsMarketReaction.news_id==exists.id)).all()
+                            for reaction in stale_reactions:
+                                reaction.status="ERROR";reaction.error="SYMBOL_MAPPING_REVOKED";reaction.next_evaluation_at=None
+                            if symbol and not any(reaction.symbol==symbol for reaction in stale_reactions):
+                                self.db.add(NewsMarketReaction(news_id=exists.id,symbol=symbol,status="PENDING",next_evaluation_at=now))
+                            log_activity(self.db,"NEWS",source.name,"REMAP","OK",f"{prior_symbol or 'UNMATCHED'} -> {symbol or 'UNMATCHED'}")
+                        duplicates+=1;continue
                     payload={**record.__dict__,"symbol":symbol,"company_name":company_name}
                     item=NewsItem(**payload,content_hash=digest,first_seen_at=now,fetched_at=now,updated_at=now,
                         overnight_news=not session.is_open(record.published_at),telegram_eligible=not backfill,

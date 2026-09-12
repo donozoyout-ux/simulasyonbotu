@@ -96,6 +96,18 @@ def test_metrics_and_cross_feed_content_dedupe():
     assert metrics["total_news"]==1 and metrics["symbol_linked"]==1 and metrics["reactions_partial"]==1
 
 
+def test_duplicate_refresh_revokes_legacy_false_symbol_mapping():
+    db=session();at=datetime.now(timezone.utc)
+    item=NewsItem(symbol="BIZIM",source="AA",source_id="legacy",title="genel haber",content="bizim için önemli",
+        url="https://www.aa.com.tr/tr/legacy",category="OTHER",published_at=at,content_hash="legacy-hash")
+    db.add(item);db.flush();db.add(NewsMarketReaction(news_id=item.id,symbol="BIZIM",status="WAITING_1D"));db.commit()
+    news_module._LAST_REFRESH_AT=0
+    row=NewsRecord("AA","legacy","genel haber","bizim için önemli","https://www.aa.com.tr/tr/legacy",at)
+    NewsService(db,config(),[Source("AA",[row])],Analyzer(),Notifier()).refresh()
+    assert db.get(NewsItem,item.id).symbol is None
+    reaction=db.scalar(select(NewsMarketReaction));assert reaction.status=="ERROR" and reaction.error=="SYMBOL_MAPPING_REVOKED"
+
+
 def test_backfill_news_never_notifies():
     class CountingNotifier:
         calls=0
