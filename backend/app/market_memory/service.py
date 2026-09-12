@@ -27,15 +27,23 @@ def _utc(value):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
-def candle_quality(candles) -> dict:
+def candle_quality(candles, timeframe=None) -> dict:
     duplicates = len(candles) - len({item.timestamp for item in candles})
     invalid = sum(item.open <= 0 or item.high <= 0 or item.low <= 0 or item.close <= 0 or
                   item.high < max(item.open, item.close) or item.low > min(item.open, item.close) for item in candles)
     missing_timestamp = sum(item.timestamp is None for item in candles)
     ordered = sorted((_utc(item.timestamp) for item in candles if item.timestamp is not None))
-    deltas = [(right-left).total_seconds() for left, right in zip(ordered, ordered[1:]) if right > left]
+    pairs = [(left, right) for left, right in zip(ordered, ordered[1:]) if right > left]
+    if timeframe in {"5m", "15m", "1h"}:
+        session = BistMarketSession()
+        pairs = [(left, right) for left, right in pairs
+            if left.astimezone(session.tz).date() == right.astimezone(session.tz).date()]
+    deltas = [(right-left).total_seconds() for left, right in pairs]
     typical = median(deltas) if deltas else None
-    gaps = sum(delta > typical * 1.5 for delta in deltas) if typical else 0
+    if timeframe == "1d":
+        gaps = sum((right.date()-left.date()).days > 4 for left, right in pairs)
+    else:
+        gaps = sum(delta > typical * 1.5 for delta in deltas) if typical else 0
     stale = bool(ordered and datetime.now(timezone.utc) - ordered[-1] > timedelta(days=7))
     status = "INVALID" if invalid or missing_timestamp else "PARTIAL" if duplicates or gaps or stale or len(candles) < 35 else "VALID"
     return {"status": status, "duplicates": duplicates, "invalid_ohlc": invalid, "missing_timestamp": missing_timestamp,

@@ -133,7 +133,8 @@ class NewsService:
             except Exception as exc:
                 self.db.rollback()
                 state = self.db.get(NewsSourceState, source.name) or NewsSourceState(source=source.name)
-                waf_blocked = isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
+                waf_blocked = isinstance(exc, httpx.HTTPStatusError) and (
+                    400 <= exc.response.status_code < 500 or exc.response.status_code == 666)
                 state.status, state.last_fetch_at = ("WAF_BLOCKED" if source.name == "KAP" and waf_blocked else "ERROR"), datetime.now(timezone.utc)
                 state.error = f"{type(exc).__name__}: source unavailable"[:500]
                 if isinstance(exc, (ValueError, TypeError)): state.parse_errors = (state.parse_errors or 0) + 1

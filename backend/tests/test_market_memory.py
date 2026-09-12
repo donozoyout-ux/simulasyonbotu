@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+import httpx
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -96,6 +97,18 @@ def test_news_health_includes_24h_counters(db):
     assert health["last_24h"] == health["important_24h"] == health["overnight_24h"] == health["kap_24h"] == 1
 
 
+def test_kap_nonstandard_waf_status_is_reported_without_bypass(db):
+    class WafSource:
+        name = "KAP"
+        def fetch(self):
+            response = httpx.Response(666, request=httpx.Request("GET", "https://www.kap.org.tr"))
+            raise httpx.HTTPStatusError("blocked", request=response.request, response=response)
+    news_module._LAST_REFRESH_AT = 0
+    result = NewsService(db, config(), [WafSource()], Analyzer(), Notifier()).refresh()
+    assert result["status"] == "PARTIAL"
+    assert NewsService(db, config(), [], Analyzer(), Notifier()).health()["sources"]["KAP"]["status"] == "WAF_BLOCKED"
+
+
 def analysis(at):
     return Analysis(symbol="ASELS", analyzed_at=at, signal_candle_time=at, price=Decimal("100"), score=82,
         trend="bullish", market_structure="BULLISH", setup="BREAKOUT", decision="POSSIBLE_ENTRY", reason="test",
@@ -172,6 +185,15 @@ def test_retention_is_non_destructive_by_default(db):
     ([CandleData(datetime.now(timezone.utc), Decimal("1"), Decimal("2"), Decimal("1"), Decimal("1"), Decimal("1"))], "PARTIAL")])
 def test_candle_quality_marks_short_history_partial(rows, expected):
     assert candle_quality(rows)["status"] == expected
+
+
+def test_candle_quality_ignores_expected_overnight_and_weekend_gaps():
+    friday = datetime(2026, 9, 11, 14, 45, tzinfo=timezone.utc)
+    monday = datetime(2026, 9, 14, 7, 0, tzinfo=timezone.utc)
+    intraday = [CandleData(friday, Decimal("1"), Decimal("2"), Decimal("1"), Decimal("1"), Decimal("1")),
+        CandleData(monday, Decimal("1"), Decimal("2"), Decimal("1"), Decimal("1"), Decimal("1"))]
+    assert candle_quality(intraday, "15m")["gaps"] == 0
+    assert candle_quality(intraday, "1d")["gaps"] == 0
 
 
 def test_historical_snapshot_is_deterministically_reconstructed(db):

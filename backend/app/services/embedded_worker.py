@@ -29,7 +29,7 @@ class EmbeddedWorker:
         self.config = config
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_news_poll = 0.0
+        self._last_news_poll: float | None = None
 
     def _sleep_seconds(self) -> int:
         session = BistMarketSession.from_config(self.config)
@@ -54,7 +54,7 @@ class EmbeddedWorker:
             news_interval = (self.config.news_poll_minutes_open if market_open
                 else self.config.news_poll_minutes_closed) * 60
             maintenance = {"market_open": market_open}
-            if self.config.news_enabled and monotonic() - self._last_news_poll >= news_interval:
+            if self.config.news_enabled and (self._last_news_poll is None or monotonic() - self._last_news_poll >= news_interval):
                 try:
                     maintenance["news"] = NewsService(db, self.config).refresh()
                 except Exception:

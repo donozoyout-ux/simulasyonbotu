@@ -36,7 +36,7 @@ class BackfillService:
             for timeframe in ("5m", "15m", "1h", "1d"):
                 try:
                     rows = self.provider.get_candles(symbol, timeframe, self.config.backfill_candle_limit)
-                    quality[symbol][timeframe] = candle_quality(rows)
+                    quality[symbol][timeframe] = candle_quality(rows, timeframe)
                     def key(value):
                         return value if value.tzinfo is None else value.astimezone(timezone.utc).replace(tzinfo=None)
                     existing = {key(value) for value in self.db.scalars(select(Candle.timestamp).where(
