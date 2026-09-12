@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -282,7 +282,9 @@ class NewsItem(Base):
     category: Mapped[str] = mapped_column(String(48), default="OTHER")
     status: Mapped[str] = mapped_column(String(32), default="OK")
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     content_hash: Mapped[str] = mapped_column(String(64), index=True)
     ai_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ai_sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
@@ -293,6 +295,8 @@ class NewsItem(Base):
     ai_tags: Mapped[list] = mapped_column(JSON, default=list)
     ai_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     telegram_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    telegram_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    overnight_news: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class NewsSourceState(Base):
@@ -304,3 +308,87 @@ class NewsSourceState(Base):
     new_items: Mapped[int] = mapped_column(Integer, default=0)
     parse_errors: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class MarketStateSnapshot(Base):
+    __tablename__ = "market_state_snapshots"
+    __table_args__ = (
+        UniqueConstraint("symbol", "timeframe", "timestamp", name="uq_market_snapshot_identity"),
+        Index("ix_market_snapshot_symbol_timeframe_timestamp", "symbol", "timeframe", "timestamp"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    timeframe: Mapped[str] = mapped_column(String(8), default="15m")
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="RECORDED")
+    price: Mapped[Decimal] = mapped_column(money)
+    ema20: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    ema50: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    ema200: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    rsi: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    macd: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    macd_signal: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    macd_histogram: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    bb_upper: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    bb_middle: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    bb_lower: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    atr: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    atr_pct: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    vwap: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    rvol: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    volume_sma20: Mapped[Decimal | None] = mapped_column(Numeric(24, 2), nullable=True)
+    trend: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    market_structure: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    swing_high: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    swing_low: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    support: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    resistance: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    bos: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    choch: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    setup: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    setup_quality: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    technical_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    risk_reward: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    relative_strength_1d: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    relative_strength_5d: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    relative_strength_20d: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    xu100_price: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    data_source: Mapped[str] = mapped_column(String(32))
+    data_quality: Mapped[str] = mapped_column(String(16), default="VALID")
+
+
+class NewsMarketReaction(Base):
+    __tablename__ = "news_market_reactions"
+    __table_args__ = (
+        UniqueConstraint("news_id", "symbol", name="uq_news_reaction_identity"),
+        Index("ix_news_reaction_news_symbol", "news_id", "symbol"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("news_items.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    price_before: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    previous_close: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    next_open: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    next_close: Mapped[Decimal | None] = mapped_column(money, nullable=True)
+    gap_pct: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    return_15m: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    return_1h: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    return_1d: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    return_5d: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    xu100_return_1d: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    abnormal_return_1d: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    volume_change: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    rvol_after: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="PENDING")
+
+
+class BackfillState(Base):
+    __tablename__ = "backfill_states"
+    task: Mapped[str] = mapped_column(String(48), primary_key=True)
+    status: Mapped[str] = mapped_column(String(24), default="PENDING")
+    cursor: Mapped[int] = mapped_column(Integer, default=0)
+    processed_items: Mapped[int] = mapped_column(Integer, default=0)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)

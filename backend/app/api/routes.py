@@ -20,6 +20,8 @@ from app.services.forward_test import active_forward_run,ensure_forward_run,forw
 from app.services.forward_worker import expected_closed_candle
 from app.services.telegram import TelegramNotifier
 from app.news.service import NewsService
+from app.market_memory.backfill import BackfillService
+from app.market_memory.service import MarketMemoryService
 
 router = APIRouter()
 config = get_settings()
@@ -264,6 +266,25 @@ def important_news(min_importance:int=Query(80,ge=0,le=100),limit:int=Query(100,
     return dump(NewsService(db,config).list(min_importance=min_importance,limit=limit))
 
 
+@router.get("/news/archive")
+def news_archive(symbol:str|None=None,source:str|None=None,category:str|None=None,sentiment:str|None=None,
+    min_importance:int|None=Query(None,ge=0,le=100),start:datetime|None=Query(None,alias="start_date"),
+    end:datetime|None=Query(None,alias="end_date"),
+    overnight_only:bool=False,reaction_only:bool=False,limit:int=Query(500,ge=1,le=2000),db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).archive(symbol,source,category,sentiment,min_importance,
+        start,end,overnight_only,reaction_only,limit))
+
+
+@router.get("/news/reactions/{symbol}")
+def news_reactions(symbol:str,limit:int=Query(500,ge=1,le=2000),db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).reactions(symbol,limit))
+
+
+@router.get("/news/event-study")
+def news_event_study(db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).event_study())
+
+
 @router.get("/news")
 def news(source:str|None=None,sentiment:str|None=None,min_importance:int|None=Query(None,ge=0,le=100),limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
     return dump(NewsService(db,config).list(source=source,sentiment=sentiment,min_importance=min_importance,limit=limit))
@@ -286,10 +307,56 @@ def refresh_news(db:Session=Depends(get_db)):
     return dump(NewsService(db,config).refresh())
 
 
+@router.get("/market-history/{symbol}/snapshot")
+def market_snapshot(symbol:str,at:datetime,db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).snapshot_at(symbol,at))
+
+
+@router.get("/market-history/{symbol}/trend")
+def market_trend(symbol:str,start:datetime|None=None,end:datetime|None=None,
+    limit:int=Query(1000,ge=1,le=5000),db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).trend(symbol,start,end,limit))
+
+
+@router.get("/market-history/{symbol}/news")
+def market_news(symbol:str,start:datetime|None=None,end:datetime|None=None,
+    limit:int=Query(500,ge=1,le=2000),db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).news(symbol,start,end,limit))
+
+
+@router.get("/market-history/{symbol}/opening-context")
+def opening_context(symbol:str,at:datetime|None=None,db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).opening_context(symbol,at))
+
+
+@router.get("/market-history/{symbol}")
+def market_history(symbol:str,start:datetime|None=None,end:datetime|None=None,
+    limit:int=Query(500,ge=1,le=5000),db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).history(symbol,start,end,limit))
+
+
+@router.get("/market-memory/health")
+def market_memory_health(db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).health())
+
+
+@router.get("/backfill/status")
+def backfill_status(db:Session=Depends(get_db)):
+    return dump(BackfillService(db,config).status())
+
+
+@router.post("/backfill/run")
+def run_backfill(batch_size:int|None=Query(None,ge=1,le=5),db:Session=Depends(get_db)):
+    return dump(BackfillService(db,config).run(batch_size))
+
+
 @router.get("/candles/{symbol}")
-def candles(symbol: str, timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$"), limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
-    rows = db.scalars(select(Candle).where(Candle.symbol == symbol.upper(), Candle.timeframe == timeframe).order_by(desc(Candle.timestamp)).limit(limit)).all()
-    if timeframe=="5m" and len(rows)<min(limit,35):
+def candles(symbol: str, timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$"),
+    limit: int = Query(200, ge=1, le=1000),at:datetime|None=None,db: Session = Depends(get_db)):
+    stmt=select(Candle).where(Candle.symbol == symbol.upper(), Candle.timeframe == timeframe)
+    if at:stmt=stmt.where(Candle.timestamp<=at)
+    rows = db.scalars(stmt.order_by(desc(Candle.timestamp)).limit(limit)).all()
+    if timeframe=="5m" and at is None and len(rows)<min(limit,35):
         try:
             fetched=BistScanner(db,config).provider.get_candles(symbol.upper(),timeframe,max(limit,220))
             existing={row.timestamp for row in rows}

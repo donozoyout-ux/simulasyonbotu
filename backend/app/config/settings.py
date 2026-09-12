@@ -69,6 +69,17 @@ class AppSettings(BaseSettings):
     news_telegram_min_importance: int = 80
     news_http_timeout_seconds: float = 12
     news_max_html_bytes: int = 2_000_000
+    news_backfill_days: int = 90
+    backfill_enabled: bool = True
+    backfill_symbols_per_cycle: int = 2
+    backfill_candle_limit: int = 1000
+    market_memory_enabled: bool = True
+    market_memory_reaction_batch: int = 50
+    candle_retention_enabled: bool = False
+    candle_retention_5m_days: int = 90
+    candle_retention_15m_days: int = 730
+    candle_retention_1h_days: int = 1825
+    candle_retention_1d_days: int = 0
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("database_url", mode="before")

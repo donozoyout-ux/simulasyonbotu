@@ -9,6 +9,9 @@ from app.db.session import SessionLocal
 from app.market_data.market_session import BistMarketSession
 from app.services.forward_worker import ForwardWorker
 from app.news.service import NewsService
+from app.market_memory.backfill import BackfillService
+from app.market_memory.service import MarketMemoryService
+from app.market_memory.brief import MorningBriefService
 
 logger = logging.getLogger("EMBEDDED_WORKER")
 
@@ -37,19 +40,48 @@ class EmbeddedWorker:
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                with SessionLocal() as db:
-                    result = ForwardWorker(db, self.config).run_once()
-                    news_interval=(self.config.news_poll_minutes_open if BistMarketSession.from_config(self.config).is_open()
-                        else self.config.news_poll_minutes_closed)*60
-                    if self.config.news_enabled and monotonic()-self._last_news_poll>=news_interval:
-                        try: NewsService(db,self.config).refresh()
-                        except Exception: db.rollback();logger.exception("news_refresh_failed")
-                        self._last_news_poll=monotonic()
+                result = self.run_cycle()
                 logger.info("embedded_worker_cycle", extra={"result": result.get("status")})
             except Exception:
                 logger.exception("embedded_worker_cycle_failed")
 
             self._stop.wait(self._sleep_seconds())
+
+    def run_cycle(self) -> dict:
+        with SessionLocal() as db:
+            result = ForwardWorker(db, self.config).run_once()
+            market_open = BistMarketSession.from_config(self.config).is_open()
+            news_interval = (self.config.news_poll_minutes_open if market_open
+                else self.config.news_poll_minutes_closed) * 60
+            maintenance = {"market_open": market_open}
+            if self.config.news_enabled and monotonic() - self._last_news_poll >= news_interval:
+                try:
+                    maintenance["news"] = NewsService(db, self.config).refresh()
+                except Exception:
+                    db.rollback(); logger.exception("news_refresh_failed")
+                    maintenance["news"] = {"status": "ERROR"}
+                self._last_news_poll = monotonic()
+            if self.config.backfill_enabled:
+                try:
+                    backfill = BackfillService(db, self.config)
+                    maintenance["backfill"] = backfill.run()
+                    maintenance["retention"] = backfill.maintain_retention()
+                except Exception:
+                    db.rollback(); logger.exception("backfill_failed")
+                    maintenance["backfill"] = {"status": "ERROR"}
+            if self.config.market_memory_enabled:
+                try:
+                    maintenance["reactions"] = MarketMemoryService(db, self.config).evaluate_reactions(
+                        self.config.market_memory_reaction_batch)
+                except Exception:
+                    db.rollback(); logger.exception("reaction_evaluation_failed")
+                    maintenance["reactions"] = {"status": "ERROR"}
+            try:
+                maintenance["morning_brief"] = MorningBriefService(db, self.config).run()
+            except Exception:
+                db.rollback(); logger.exception("morning_brief_failed")
+                maintenance["morning_brief"] = {"status": "ERROR"}
+            return {**result, "maintenance": maintenance}
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():

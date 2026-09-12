@@ -109,6 +109,8 @@ V6, bugünden itibaren 5.000 TL sanal sermaye ile gerçek piyasa verisi üzerind
 - **Run ID ve İmmutable Snapshot**: Her forward test `LIVE-YYYYMMDD-001` formatında izole edilir. Sıfırlama yapıldığında eski işlemler `ARCHIVED` olarak saklanır ve yeni 5.000 TL periyodu başlar.
 - **Strateji Versiyonu Koruması**: Aktif forward test sırasında `V3_FROZEN_1` strateji parametreleri değiştirilemez (HTTP 409 koruması).
 - **Groq AI İkinci Görüş**: Skoru en az 70 olan deterministic analizler `openai/gpt-oss-20b` modeline gönderilir. AI yalnızca `CONFIRM`, `WATCH` veya `AVOID` yorumu üretir; karar, skor, stop, hedef, lot ve emir yetkisi yoktur. Anahtar veya servis sorunu deterministic paper trading akışını durdurmaz.
+- **24/7 Piyasa Hafızası**: Haber/KAP/RSS arşivi, Yahoo tabanlı kademeli OHLCV backfill, teknik snapshot ve haber-fiyat reaction işleri embedded worker içinde seans dışında da sürer. Cursor DB'de saklanır; retention varsayılan olarak kapalıdır.
+- **Morning Brief**: İşlem günlerinde 09:15–10:00 arasında DB'deki gerçek overnight haberler, watchlist, pozisyonlar ve relative-strength snapshot'larından tek, dedupe edilmiş Telegram özeti oluşturulur.
 
 ### Yerel Geliştirme (Local Dev)
 
@@ -143,6 +145,9 @@ npm run dev
 - `GET /api/positions`, `/api/trades`, `/api/watchlist`
 - `GET /api/scanner/results`, `/api/analysis/{symbol}`, `/api/candles/{symbol}`
 - `GET /api/news`, `/api/news/{symbol}`, `/api/news/{symbol}/latest`, `/api/news/important`, `/api/news/health`
+- `GET /api/news/archive`, `/api/news/reactions/{symbol}`, `/api/news/event-study`
+- `GET /api/market-history/{symbol}`, `/trend`, `/snapshot`, `/news`, `/opening-context`
+- `GET /api/market-memory/health`, `/api/backfill/status`; `POST /api/backfill/run`
 - `POST /api/news/refresh`
 - `GET /api/decisions`, `/api/settings`
 - `GET /api/forward/status`, `/api/forward/daily-summaries`, `/api/forward/runs`

@@ -1,4 +1,4 @@
-import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,NewsHealth,NewsItem,Portfolio,Position,ScannerRunResponse,ScannerStatus,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
+import type {Analysis,BackfillState,Candle,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketSnapshot,NewsHealth,NewsItem,NewsReaction,Portfolio,Position,ScannerRunResponse,ScannerStatus,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
 const API = "/api";
 
 async function get<T>(path: string): Promise<T> {
@@ -16,8 +16,8 @@ export const api = {
   analyses: () => get<Analysis[]>("/scanner/results"),
   scannerStatus: () => get<ScannerStatus>("/scanner/status"),
   decisions: () => get<Decision[]>("/decisions"),
-  candles: (symbol: string, timeframe = "15m") =>
-    get<Candle[]>(`/candles/${symbol}?timeframe=${timeframe}`),
+  candles: (symbol: string, timeframe = "15m", at?:string) =>
+    get<Candle[]>(`/candles/${symbol}?timeframe=${timeframe}${at?`&at=${encodeURIComponent(at)}`:""}`),
   dataHealth: () => get<DataHealth>("/data-health"),
   telegramStatus: () => get<{enabled:boolean;configured:boolean;signal_alerts:boolean}>("/telegram/status"),
   strategyHealth: () => get<StrategyHealth>("/strategy-health"),
@@ -29,8 +29,17 @@ export const api = {
     return r.json();
   },
   news: () => get<NewsItem[]>("/news"),
+  newsArchive: (query="") => get<NewsItem[]>(`/news/archive${query?`?${query}`:""}`),
   symbolNews: (symbol:string) => get<NewsItem[]>(`/news/${symbol}`),
+  newsReactions: (symbol:string) => get<NewsReaction[]>(`/news/reactions/${symbol}`),
+  eventStudy: () => get<EventStudy[]>("/news/event-study"),
   newsHealth: () => get<NewsHealth>("/news/health"),
+  marketHistory: (symbol:string) => get<MarketSnapshot[]>(`/market-history/${symbol}`),
+  marketTrend: (symbol:string) => get<Array<{timestamp:string;price:number;trend?:string;structure?:string;score?:number}>>(`/market-history/${symbol}/trend`),
+  marketSnapshot: (symbol:string,at:string) => get<MarketSnapshot>(`/market-history/${symbol}/snapshot?at=${encodeURIComponent(at)}`),
+  marketNews: (symbol:string) => get<NewsItem[]>(`/market-history/${symbol}/news`),
+  marketMemoryHealth: () => get<MarketMemoryHealth>("/market-memory/health"),
+  backfillStatus: () => get<BackfillState[]>("/backfill/status"),
   refreshNews: async () => {const r=await fetch(`${API}/news/refresh`,{method:"POST"});if(!r.ok)throw new Error("Haber yenilenemedi");return r.json()},
   scan: async (maxSymbols?: number) => {
     const query = maxSymbols ? `?max_symbols=${maxSymbols}` : "";

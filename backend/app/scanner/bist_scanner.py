@@ -18,7 +18,7 @@ from app.market_data.eodhd_provider import EodhdHistoricalProvider
 from app.market_data.market_session import BistMarketSession
 from app.market_data.twelvedata_provider import TwelveDataProvider
 from app.market_data.hybrid_provider import HybridMarketDataProvider
-from app.models import Analysis,Candle,DecisionLog,NewsItem,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
+from app.models import Analysis,Candle,DecisionLog,MarketStateSnapshot,NewsItem,NewsMarketReaction,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
 from app.news.sentiment import GroqNewsAnalyzer
 from app.portfolio.paper_broker import DuplicateOrderError,PaperBroker
 from app.portfolio.portfolio_manager import ensure_portfolio,portfolio_summary,take_snapshot
@@ -29,6 +29,7 @@ from app.services.forward_test import ensure_forward_run,upsert_daily_summary
 from app.services.telegram import TelegramNotifier
 from app.research.v4 import strategy_config_snapshot
 from app.market_data.cache import redact_secret
+from app.market_memory.service import MarketMemoryService
 
 logger=logging.getLogger("SCANNER")
 _SCAN_LOCK=threading.Lock()
@@ -156,6 +157,16 @@ class BistScanner:
             "ai_importance":row.ai_importance,"ai_summary":row.ai_summary,"ai_risks":row.ai_risks} for row in news_rows]
         details["news"]={"status":"OK" if news_context else "NO_NEWS","items":news_context,
             "news_score":max((row.ai_importance or 0 for row in news_rows),default=None)}
+        prior_states=self.db.scalars(select(MarketStateSnapshot).where(MarketStateSnapshot.symbol==symbol)
+            .order_by(MarketStateSnapshot.timestamp.desc()).limit(5)).all()
+        prior_reactions=self.db.execute(select(NewsItem.category,NewsMarketReaction.return_1d,
+            NewsMarketReaction.abnormal_return_1d).join(NewsMarketReaction,NewsMarketReaction.news_id==NewsItem.id)
+            .where(NewsMarketReaction.symbol==symbol).order_by(NewsMarketReaction.evaluated_at.desc()).limit(5)).all()
+        details["market_memory"]=json_safe({"previous_snapshots":[{"timestamp":row.timestamp,"price":row.price,
+            "trend":row.trend,"structure":row.market_structure,"score":row.technical_score} for row in prior_states],
+            "observed_news_reactions":[{"category":category,"return_1d":return_1d,
+                "abnormal_return_1d":abnormal} for category,return_1d,abnormal in prior_reactions],
+            "observations_only":True})
         summary=portfolio_summary(self.db,self.config.initial_balance)
         assessment=self.universe.assess(symbol,frames,summary["portfolio_value"])
         details["universe"]={"status":assessment.status,"reason":assessment.reason,"affordable":assessment.affordable}
@@ -171,7 +182,11 @@ class BistScanner:
         try:
             self.db.add(analysis)
             if not self.db.scalar(select(Symbol.id).where(Symbol.ticker==symbol)):self.db.add(Symbol(ticker=symbol,name=symbol))
-            self._persist_candles(symbol,frames,source);self.db.commit();self.db.refresh(analysis)
+            self._persist_candles(symbol,frames,source)
+            if self.config.market_memory_enabled:
+                benchmark_price=self._benchmark_daily[-1].close if self._benchmark_daily else None
+                MarketMemoryService(self.db,self.config).record_analysis(analysis,benchmark_price)
+            self.db.commit();self.db.refresh(analysis)
         except Exception:
             self.db.rollback()
             raise
