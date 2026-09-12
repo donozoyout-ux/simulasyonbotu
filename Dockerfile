@@ -2,7 +2,7 @@ FROM node:22-alpine AS frontend-builder
 WORKDIR /build/frontend
 
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 COPY frontend/ ./
 RUN npm run build
