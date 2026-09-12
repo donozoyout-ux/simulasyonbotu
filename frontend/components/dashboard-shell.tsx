@@ -26,6 +26,7 @@ import type {
   ForwardStatus,
   Portfolio,
   Position,
+  ScannerStatus,
   Snapshot,
   StrategyHealth,
   Trade,
@@ -38,6 +39,7 @@ import { PriceChart } from "./price-chart";
 type View =
   | "Genel Bakış"
   | "Takip Listesi"
+  | "Tarama Merkezi"
   | "Grafik Analizi"
   | "Pozisyonlar"
   | "İşlemler"
@@ -47,6 +49,7 @@ type View =
 const nav: [View, React.ElementType][] = [
   ["Genel Bakış", BarChart3],
   ["Takip Listesi", ListFilter],
+  ["Tarama Merkezi", RefreshCw],
   ["Grafik Analizi", CandlestickChart],
   ["Pozisyonlar", BriefcaseBusiness],
   ["İşlemler", CircleDollarSign],
@@ -108,6 +111,7 @@ export function DashboardShell() {
     [timeframe, setTimeframe] = useState("15m"),
     [mode, setMode] = useState("DATA ERROR"),
     [health, setHealth] = useState<DataHealth>(initialHealth),
+    [scannerStatus, setScannerStatus] = useState<ScannerStatus>(),
     [strategyHealth, setStrategyHealth] = useState<StrategyHealth>(
       initialStrategyHealth,
     ),
@@ -128,7 +132,7 @@ export function DashboardShell() {
     });
   const load = useCallback(async () => {
     try {
-      const [p, a, w, pos, t, d, h, s, dh, sh, fw, newsRows, nh] = await Promise.all([
+      const [p, a, w, pos, t, d, h, s, dh, sh, fw, ss, newsRows, nh] = await Promise.all([
         api.portfolio(),
         api.analyses(),
         api.watchlist(),
@@ -140,6 +144,7 @@ export function DashboardShell() {
         api.dataHealth(),
         api.strategyHealth(),
         api.forwardStatus(),
+        api.scannerStatus().catch(()=>undefined),
         api.news().catch(()=>[]),
         api.newsHealth().catch(()=>undefined),
       ]);
@@ -154,6 +159,7 @@ export function DashboardShell() {
       setSettings(s);
       setHealth(dh);
       setStrategyHealth(sh);
+      setScannerStatus(ss);
       setNews(newsRows);
       setNewsHealth(nh);
       setSelected((current) =>
@@ -189,11 +195,11 @@ export function DashboardShell() {
       .then(setCandles)
       .catch(() => setCandles([]));
   }, [selected, timeframe]);
-  const scan = async () => {
+  const scan = async (maxSymbols?: number) => {
     setLoading(true);
     setMessage("BIST taranıyor…");
     try {
-      await api.scan();
+      await api.scan(maxSymbols);
       await load();
       setMessage("Tarama tamamlandı");
     } catch {
@@ -328,6 +334,18 @@ export function DashboardShell() {
           <Watchlist
             rows={watch}
             analyses={analyses}
+            onSelect={(s) => {
+              setSelected(s);
+              setView("Grafik Analizi");
+            }}
+          />
+        )}
+        {view === "Tarama Merkezi" && (
+          <ScannerCenter
+            status={scannerStatus}
+            analyses={analyses}
+            loading={loading}
+            onScan={scan}
             onSelect={(s) => {
               setSelected(s);
               setView("Grafik Analizi");
