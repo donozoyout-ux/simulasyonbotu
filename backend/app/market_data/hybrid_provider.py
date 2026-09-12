@@ -79,7 +79,9 @@ class HybridMarketDataProvider(MarketDataProvider):
     def _fetch_candles(self, symbol: str, timeframe: str, limit: int = 200) -> list[CandleData]:
         timeframe = timeframe.lower()
 
-        if timeframe in {"5m", "15m"}:
+        if timeframe == "5m":
+            # Open positions are few (max 4), so Twelve can be primary here without
+            # exhausting the free-tier minute quota. Yahoo validates/falls back.
             try:
                 primary = self.twelve.get_candles(symbol, timeframe, limit)
                 self.last_sources[f"{symbol}:{timeframe}"] = "twelvedata"
@@ -98,7 +100,6 @@ class HybridMarketDataProvider(MarketDataProvider):
                         f"Twelve={twelve_error}; Yahoo={yahoo_error}"
                     ) from None
 
-            # Cross-check only a small secondary window so Yahoo is validation, not another full feed.
             try:
                 secondary = self.yahoo.get_candles(symbol, timeframe, min(max(limit, 40), 80))
                 self._validate_prices(symbol, timeframe, primary, secondary)
@@ -111,7 +112,9 @@ class HybridMarketDataProvider(MarketDataProvider):
                 }
             return primary
 
-        # Higher timeframes prefer Yahoo to keep Twelve API usage under control.
+        # Bulk 15m scanner + higher timeframes prefer Yahoo. Calling Twelve once
+        # per scanned symbol would exceed the free tier (8 API credits/minute).
+        # Twelve remains the live 5m source and fallback for scanner timeframes.
         try:
             candles = self.yahoo.get_candles(symbol, timeframe, limit)
             self.last_sources[f"{symbol}:{timeframe}"] = "yahoo"
