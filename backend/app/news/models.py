@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-import re
 
-from app.market_data.symbols import BIST100_SYMBOLS
+from app.news.company_aliases import map_company_symbol
 
 
 def infer_symbol(*texts: str) -> str | None:
-    haystack = " ".join(texts).upper()
-    return next((symbol for symbol in BIST100_SYMBOLS if re.search(rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])", haystack)), None)
+    return map_company_symbol(*texts)[0]
 
 
 @dataclass(frozen=True)

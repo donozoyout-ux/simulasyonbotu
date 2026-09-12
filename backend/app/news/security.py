@@ -4,7 +4,10 @@ import ipaddress
 from urllib.parse import urljoin, urlparse
 
 
-ALLOWED_NEWS_HOSTS = frozenset({"www.kap.org.tr", "kap.org.tr", "www.aa.com.tr", "aa.com.tr"})
+ALLOWED_NEWS_HOSTS = frozenset({
+    "www.kap.org.tr", "kap.org.tr", "www.aa.com.tr", "aa.com.tr",
+    "www.haberturk.com", "haberturk.com", "www.ekonomim.com", "ekonomim.com",
+})
 
 
 def validate_source_url(url: str, base_url: str | None = None) -> str:

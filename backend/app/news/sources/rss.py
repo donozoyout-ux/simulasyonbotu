@@ -12,12 +12,12 @@ from app.news.sources.base import NewsSource
 PUBLIC_RSS_URL = "https://www.aa.com.tr/tr/rss/default?cat=ekonomi"
 
 
-def parse_rss(payload: str, source: str = "AA") -> list[NewsRecord]:
+def parse_rss(payload: str, source: str = "AA", base_url: str = PUBLIC_RSS_URL) -> list[NewsRecord]:
     root = ElementTree.fromstring(payload)
     records = []
     for item in root.findall(".//item"):
         title = (item.findtext("title") or "").strip()
-        url = validate_source_url((item.findtext("link") or "").strip(), PUBLIC_RSS_URL)
+        url = validate_source_url((item.findtext("link") or "").strip(), base_url)
         if not title or not url:
             continue
         raw_date = (item.findtext("pubDate") or "").strip()
@@ -37,3 +37,11 @@ class RssSource(NewsSource):
     def fetch(self) -> list[NewsRecord]:
         # General economy feeds are filtered locally; unrelated stories never consume Groq quota.
         return [record for record in parse_rss(self.fetch_text(PUBLIC_RSS_URL)) if record.symbol]
+
+
+class GenericRssSource(NewsSource):
+    def __init__(self, source_id: str, feed_url: str, **kwargs):
+        super().__init__(**kwargs); self.name, self.feed_url = source_id, feed_url
+
+    def fetch(self) -> list[NewsRecord]:
+        return parse_rss(self.fetch_text(self.feed_url), self.name, self.feed_url)

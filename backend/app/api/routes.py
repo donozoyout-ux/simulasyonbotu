@@ -22,6 +22,7 @@ from app.services.telegram import TelegramNotifier
 from app.news.service import NewsService
 from app.market_memory.backfill import BackfillService
 from app.market_memory.service import MarketMemoryService
+from app.services.collection_activity import recent_activity
 
 router = APIRouter()
 config = get_settings()
@@ -261,6 +262,26 @@ def news_health(db: Session = Depends(get_db)):
     return dump(NewsService(db,config).health())
 
 
+@router.get("/news/metrics")
+def news_metrics(db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).metrics())
+
+
+@router.get("/news/sources/health")
+def news_sources_health(db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).sources_health())
+
+
+@router.get("/news/reactions/status")
+def news_reaction_status(db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).reaction_status())
+
+
+@router.get("/news/reactions/recent")
+def recent_news_reactions(limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).recent_reactions(limit))
+
+
 @router.get("/news/important")
 def important_news(min_importance:int=Query(80,ge=0,le=100),limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
     return dump(NewsService(db,config).list(min_importance=min_importance,limit=limit))
@@ -270,9 +291,10 @@ def important_news(min_importance:int=Query(80,ge=0,le=100),limit:int=Query(100,
 def news_archive(symbol:str|None=None,source:str|None=None,category:str|None=None,sentiment:str|None=None,
     min_importance:int|None=Query(None,ge=0,le=100),start:datetime|None=Query(None,alias="start_date"),
     end:datetime|None=Query(None,alias="end_date"),
-    overnight_only:bool=False,reaction_only:bool=False,limit:int=Query(500,ge=1,le=2000),db:Session=Depends(get_db)):
+    overnight_only:bool=False,reaction_only:bool=False,reaction_complete_only:bool=False,
+    limit:int=Query(500,ge=1,le=2000),db:Session=Depends(get_db)):
     return dump(NewsService(db,config).archive(symbol,source,category,sentiment,min_importance,
-        start,end,overnight_only,reaction_only,limit))
+        start,end,overnight_only,reaction_only,limit,reaction_complete_only))
 
 
 @router.get("/news/reactions/{symbol}")
@@ -343,6 +365,11 @@ def market_memory_health(db:Session=Depends(get_db)):
 @router.get("/backfill/status")
 def backfill_status(db:Session=Depends(get_db)):
     return dump(BackfillService(db,config).status())
+
+
+@router.get("/data-collection/activity")
+def data_collection_activity(limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
+    return dump(recent_activity(db,limit))
 
 
 @router.post("/backfill/run")

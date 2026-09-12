@@ -74,7 +74,7 @@ class AppSettings(BaseSettings):
     backfill_symbols_per_cycle: int = 2
     backfill_candle_limit: int = 1000
     market_memory_enabled: bool = True
-    market_memory_reaction_batch: int = 50
+    market_memory_reaction_batch: int = 20
     candle_retention_enabled: bool = False
     candle_retention_5m_days: int = 90
     candle_retention_15m_days: int = 730

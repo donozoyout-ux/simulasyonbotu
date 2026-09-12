@@ -15,7 +15,8 @@ class TelegramNewsNotifier:
         return bool(self.config.telegram_enabled and _secret_value(self.config.telegram_bot_token) and _secret_value(self.config.telegram_chat_id))
 
     def send(self, item) -> bool:
-        if not self.configured or item.source != "KAP" or item.telegram_sent or (item.ai_importance or 0) < self.config.news_telegram_min_importance:
+        if (not self.configured or not getattr(item, "telegram_eligible", True) or item.telegram_sent
+                or (item.ai_importance or 0) < self.config.news_telegram_min_importance):
             return False
         token, chat_id = _secret_value(self.config.telegram_bot_token), _secret_value(self.config.telegram_chat_id)
         text = (f"📢 KAP HABERİ\n\n{item.symbol or 'BIST'}\n\n{item.title}\n\nEtki: {item.ai_sentiment or 'NEUTRAL'}\n"

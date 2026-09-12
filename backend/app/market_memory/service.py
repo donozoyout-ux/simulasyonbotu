@@ -11,6 +11,7 @@ from app.analysis.pipeline import analyze_frames
 from app.market_data.provider import CandleData
 from app.market_data.market_session import BistMarketSession
 from app.models import Analysis, Candle, MarketStateSnapshot, NewsItem, NewsMarketReaction
+from app.services.collection_activity import log_activity
 
 
 def _decimal(value):
@@ -98,6 +99,7 @@ class MarketMemoryService:
             return None
         snapshot = MarketStateSnapshot(**payload)
         self.db.add(snapshot)
+        log_activity(self.db,"MARKET_MEMORY",analysis.symbol,"SNAPSHOT","RECORDED","15m snapshot")
         return snapshot
 
     def history(self, symbol: str, start=None, end=None, limit=500):
@@ -161,17 +163,23 @@ class MarketMemoryService:
             "relative_strength_1d": snapshot.relative_strength_1d if snapshot else None,
             "execution_authority": False}
 
-    def evaluate_reactions(self, limit=50):
-        news_rows = self.db.scalars(select(NewsItem).outerjoin(
-            NewsMarketReaction,
-            (NewsMarketReaction.news_id == NewsItem.id) & (NewsMarketReaction.symbol == NewsItem.symbol),
-        ).where(NewsItem.symbol.is_not(None), or_(
-            NewsMarketReaction.id.is_(None), NewsMarketReaction.status != "COMPLETE"
-        )).order_by(NewsItem.published_at).limit(limit)).all()
+    def evaluate_reactions(self, limit=20):
+        now = datetime.now(timezone.utc)
+        # Upgrade legacy linked news into the durable queue without evaluating an unbounded set.
+        missing = self.db.scalars(select(NewsItem).outerjoin(NewsMarketReaction,
+            (NewsMarketReaction.news_id == NewsItem.id) & (NewsMarketReaction.symbol == NewsItem.symbol))
+            .where(NewsItem.symbol.is_not(None), NewsMarketReaction.id.is_(None))
+            .order_by(NewsItem.published_at).limit(limit)).all()
+        for news in missing:
+            self.db.add(NewsMarketReaction(news_id=news.id, symbol=news.symbol, status="PENDING", next_evaluation_at=now))
+        if missing: self.db.flush()
+        rows = self.db.execute(select(NewsMarketReaction, NewsItem).join(NewsItem, NewsItem.id == NewsMarketReaction.news_id)
+            .where(NewsMarketReaction.status.not_in(("COMPLETE", "ERROR")), or_(
+                NewsMarketReaction.next_evaluation_at.is_(None), NewsMarketReaction.next_evaluation_at <= now))
+            .order_by(NewsMarketReaction.next_evaluation_at, NewsMarketReaction.id).limit(limit)).all()
         updated = 0
-        for news in news_rows:
-            reaction = self.db.scalar(select(NewsMarketReaction).where(NewsMarketReaction.news_id == news.id,
-                NewsMarketReaction.symbol == news.symbol)) or NewsMarketReaction(news_id=news.id, symbol=news.symbol)
+        for reaction, news in rows:
+          try:
             intraday = self.db.scalars(select(Candle).where(Candle.symbol == news.symbol, Candle.timeframe == "15m")
                 .order_by(Candle.timestamp)).all()
             daily = self.db.scalars(select(Candle).where(Candle.symbol == news.symbol, Candle.timeframe == "1d")
@@ -203,12 +211,41 @@ class MarketMemoryService:
             reaction.xu100_return_1d = _pct(xu_after[0].close, xu_before[-1].close) if xu_before and xu_after else None
             reaction.abnormal_return_1d = (reaction.return_1d - reaction.xu100_return_1d
                 if reaction.return_1d is not None and reaction.xu100_return_1d is not None else None)
-            reaction.status = "COMPLETE" if reaction.return_5d is not None else "PARTIAL" if any(
-                value is not None for value in (reaction.return_15m, reaction.return_1h, reaction.return_1d)) else "PENDING"
-            reaction.evaluated_at = datetime.now(timezone.utc)
-            self.db.add(reaction); updated += 1
+            reaction.pre_return_15m = _pct(before[-1].close, before[-2].close) if len(before) >= 2 else None
+            if news.overnight_news:
+                reaction.first_15m_return = reaction.return_15m
+                reaction.first_1h_return = reaction.return_1h
+                reaction.eod_return = reaction.return_1d
+            if not after:
+                reaction.status = "WAITING_MARKET_OPEN" if news.overnight_news else "WAITING_15M"
+                delay = timedelta(hours=12) if news.overnight_news else timedelta(minutes=15)
+            elif reaction.return_1h is None: reaction.status,delay="WAITING_1H",timedelta(hours=1)
+            elif reaction.return_1d is None: reaction.status,delay="WAITING_1D",timedelta(hours=12)
+            elif reaction.return_5d is None: reaction.status,delay="WAITING_5D",timedelta(days=1)
+            else: reaction.status,delay="COMPLETE",None
+            reaction.evaluated_at=reaction.last_evaluation_at=now
+            reaction.next_evaluation_at=now+delay if delay else None
+            reaction.attempts=(reaction.attempts or 0)+1;reaction.error=None
+            self.db.add(reaction);log_activity(self.db,"REACTION",news.symbol,"EVALUATE",reaction.status,news.title[:180]);updated+=1
+          except Exception as exc:
+            reaction.status="ERROR";reaction.error=f"{type(exc).__name__}: evaluation failed"[:500]
+            reaction.last_evaluation_at=now;reaction.attempts=(reaction.attempts or 0)+1
+            log_activity(self.db,"REACTION",news.symbol,"EVALUATE","ERROR",reaction.error);updated+=1
         self.db.commit()
         return {"status": "OK", "evaluated": updated}
+
+    def reaction_status(self):
+        counts=dict(self.db.execute(select(NewsMarketReaction.status,func.count()).group_by(NewsMarketReaction.status)).all())
+        keys=("PENDING","WAITING_MARKET_OPEN","WAITING_15M","WAITING_1H","WAITING_1D","WAITING_5D","COMPLETE","ERROR")
+        result={key.lower():counts.get(key,0) for key in keys}; total=sum(result.values())
+        result.update({"total":total,"progress_pct":round(result["complete"]*100/total,1) if total else 0.0})
+        return result
+
+    def recent_reactions(self,limit=100):
+        rows=self.db.execute(select(NewsMarketReaction,NewsItem).join(NewsItem,NewsItem.id==NewsMarketReaction.news_id)
+            .order_by(desc(NewsMarketReaction.last_evaluation_at),desc(NewsMarketReaction.id)).limit(limit)).all()
+        return [{**{c.name:getattr(reaction,c.name) for c in NewsMarketReaction.__table__.columns},
+            "title":news.title,"source":news.source,"published_at":news.published_at} for reaction,news in rows]
 
     def reactions(self, symbol: str, limit=500):
         stmt = select(NewsMarketReaction).where(NewsMarketReaction.symbol == symbol.upper()).order_by(desc(NewsMarketReaction.evaluated_at)).limit(limit)
@@ -240,9 +277,16 @@ class MarketMemoryService:
     def health(self):
         snapshot_count = self.db.scalar(select(func.count()).select_from(MarketStateSnapshot)) or 0
         candle_count = self.db.scalar(select(func.count()).select_from(Candle)) or 0
+        frames=dict(self.db.execute(select(MarketStateSnapshot.timeframe,func.count()).group_by(MarketStateSnapshot.timeframe)).all())
+        recorded=self.db.scalar(select(func.count()).select_from(MarketStateSnapshot).where(MarketStateSnapshot.status=="RECORDED")) or 0
+        reconstructed=self.db.scalar(select(func.count()).select_from(MarketStateSnapshot).where(MarketStateSnapshot.status=="RECONSTRUCTED")) or 0
+        errors=self.db.scalar(select(func.count()).select_from(MarketStateSnapshot).where(MarketStateSnapshot.data_quality=="INVALID")) or 0
+        symbols=self.db.scalar(select(func.count(func.distinct(MarketStateSnapshot.symbol)))) or 0
+        last=self.db.scalar(select(func.max(MarketStateSnapshot.timestamp)))
         return {"status": "OK" if snapshot_count else "NO_DATA", "price_history": "OK" if candle_count else "NO_DATA",
             "snapshot_count": snapshot_count, "reaction_count": self.db.scalar(select(func.count()).select_from(NewsMarketReaction)) or 0,
             "news_count": self.db.scalar(select(func.count()).select_from(NewsItem)) or 0,
-            "candle_count": candle_count,
-            "last_snapshot": self.db.scalar(select(func.max(MarketStateSnapshot.timestamp))),
+            "candle_count": candle_count,"symbols":symbols,"recorded_count":recorded,"reconstructed_count":reconstructed,
+            "error_count":errors,"timeframes":{key:frames.get(key,0) for key in ("5m","15m","1h","1d")},
+            "last_snapshot":last,"last_snapshot_at":last,
             "last_news": self.db.scalar(select(func.max(NewsItem.published_at)))}

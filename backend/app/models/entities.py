@@ -270,6 +270,9 @@ class NewsItem(Base):
     __table_args__ = (
         UniqueConstraint("source", "source_id", name="uq_news_source_id"),
         UniqueConstraint("content_hash", name="uq_news_content_hash"),
+        Index("ix_news_items_symbol_published_at", "symbol", "published_at"),
+        Index("ix_news_items_source_published_at", "source", "published_at"),
+        Index("ix_news_items_ai_status", "ai_status"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
@@ -297,6 +300,8 @@ class NewsItem(Base):
     telegram_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     telegram_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     overnight_news: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    telegram_eligible: Mapped[bool] = mapped_column(Boolean, default=True)
+    ingestion_mode: Mapped[str] = mapped_column(String(16), default="LIVE")
 
 
 class NewsSourceState(Base):
@@ -308,6 +313,22 @@ class NewsSourceState(Base):
     new_items: Mapped[int] = mapped_column(Integer, default=0)
     parse_errors: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(24), default="RSS")
+    base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    poll_interval: Mapped[int] = mapped_column(Integer, default=900)
+    supports_backfill: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_symbol_mapping: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_item_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    items_fetched: Mapped[int] = mapped_column(Integer, default=0)
+    items_inserted: Mapped[int] = mapped_column(Integer, default=0)
+    duplicates: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[int] = mapped_column(Integer, default=0)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class MarketStateSnapshot(Base):
@@ -362,6 +383,7 @@ class NewsMarketReaction(Base):
     __table_args__ = (
         UniqueConstraint("news_id", "symbol", name="uq_news_reaction_identity"),
         Index("ix_news_reaction_news_symbol", "news_id", "symbol"),
+        Index("ix_news_reaction_status_due", "status", "next_evaluation_at"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     news_id: Mapped[int] = mapped_column(ForeignKey("news_items.id"), index=True)
@@ -381,6 +403,14 @@ class NewsMarketReaction(Base):
     rvol_after: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="PENDING")
+    next_evaluation_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_evaluation_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    pre_return_15m: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    first_15m_return: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    first_1h_return: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    eod_return: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
 
 class BackfillState(Base):
@@ -392,3 +422,15 @@ class BackfillState(Base):
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class DataCollectionActivity(Base):
+    __tablename__ = "data_collection_activity"
+    __table_args__ = (Index("ix_collection_activity_module_created", "module", "created_at"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    module: Mapped[str] = mapped_column(String(32), index=True)
+    subject: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    action: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(24))
+    detail: Mapped[str | None] = mapped_column(String(500), nullable=True)

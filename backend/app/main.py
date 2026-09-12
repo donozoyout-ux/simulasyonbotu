@@ -55,6 +55,9 @@ app.add_middleware(
 app.include_router(router, prefix=settings.api_prefix)
 
 frontend_dir = Path(__file__).resolve().parents[2] / "frontend_out"
+local_frontend_dir = Path(__file__).resolve().parents[2] / "frontend" / "out"
+if not frontend_dir.exists() and local_frontend_dir.exists():
+    frontend_dir = local_frontend_dir
 
 if frontend_dir.exists():
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

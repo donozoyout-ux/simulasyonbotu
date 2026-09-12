@@ -8,6 +8,7 @@ import {
   CandlestickChart,
   CircleDollarSign,
   Database,
+  CloudDownload,
   ListFilter,
   Newspaper,
   Pause,
@@ -35,7 +36,11 @@ import type {
   NewsItem,
   NewsHealth,
   MarketMemoryHealth,
-  BackfillState,
+  BackfillStatus,
+  CollectionActivity,
+  NewsMetrics,
+  NewsSourceHealth,
+  ReactionQueueStatus,
   MarketSnapshot,
 } from "@/types";
 import { PriceChart } from "./price-chart";
@@ -50,6 +55,7 @@ type View =
   | "Bot Aktivitesi"
   | "Haberler / KAP"
   | "Piyasa Hafızası"
+  | "Veri Toplama Merkezi"
   | "Ayarlar";
 const nav: [View, React.ElementType][] = [
   ["Genel Bakış", BarChart3],
@@ -61,6 +67,7 @@ const nav: [View, React.ElementType][] = [
   ["Bot Aktivitesi", Activity],
   ["Haberler / KAP", Newspaper],
   ["Piyasa Hafızası", Database],
+  ["Veri Toplama Merkezi", CloudDownload],
   ["Ayarlar", Settings],
 ];
 const seedPortfolio: Portfolio = {
@@ -126,7 +133,11 @@ export function DashboardShell() {
     [news,setNews]=useState<NewsItem[]>([]),
     [newsHealth,setNewsHealth]=useState<NewsHealth>(),
     [memoryHealth,setMemoryHealth]=useState<MarketMemoryHealth>(),
-    [backfill,setBackfill]=useState<BackfillState[]>([]),
+    [backfill,setBackfill]=useState<BackfillStatus>(),
+    [newsMetrics,setNewsMetrics]=useState<NewsMetrics>(),
+    [sourceHealth,setSourceHealth]=useState<NewsSourceHealth[]>([]),
+    [reactionQueue,setReactionQueue]=useState<ReactionQueueStatus>(),
+    [collectionActivity,setCollectionActivity]=useState<CollectionActivity[]>([]),
     [loading, setLoading] = useState(false),
     [message, setMessage] = useState("Yerel API bekleniyor"),
     [settings, setSettings] = useState<Record<string, number>>({
@@ -142,7 +153,7 @@ export function DashboardShell() {
     });
   const load = useCallback(async () => {
     try {
-      const [p, a, w, pos, t, d, h, s, dh, sh, fw, ss, newsRows, nh, mh, bf] = await Promise.all([
+      const [p, a, w, pos, t, d, h, s, dh, sh, fw, ss, nh, mh, bf] = await Promise.all([
         api.portfolio(),
         api.analyses(),
         api.watchlist(),
@@ -155,10 +166,9 @@ export function DashboardShell() {
         api.strategyHealth(),
         api.forwardStatus(),
         api.scannerStatus().catch(()=>undefined),
-        api.newsArchive().catch(()=>[]),
         api.newsHealth().catch(()=>undefined),
         api.marketMemoryHealth().catch(()=>undefined),
-        api.backfillStatus().catch(()=>[]),
+        api.backfillStatus().catch(()=>undefined),
       ]);
       setPortfolio(p);
       setForward(fw);
@@ -172,7 +182,6 @@ export function DashboardShell() {
       setHealth(dh);
       setStrategyHealth(sh);
       setScannerStatus(ss);
-      setNews(newsRows);
       setNewsHealth(nh);
       setMemoryHealth(mh);
       setBackfill(bf);
@@ -196,11 +205,27 @@ export function DashboardShell() {
   }, []);
   useEffect(() => {
     void Promise.resolve().then(load);
+    void api.newsArchive().then(setNews).catch(()=>setNews([]));
   }, [load]);
   useEffect(() => {
     const timer = window.setInterval(() => void load(), 30_000);
     return () => window.clearInterval(timer);
   }, [load]);
+  const loadCollection=useCallback(async()=>{
+    try{
+      const [metrics,sources,reactions,activity,memory,bf]=await Promise.all([
+        api.newsMetrics(),api.newsSourcesHealth(),api.reactionQueueStatus(),api.collectionActivity(),
+        api.marketMemoryHealth(),api.backfillStatus(),
+      ]);
+      setNewsMetrics(metrics);setSourceHealth(sources);setReactionQueue(reactions);
+      setCollectionActivity(activity);setMemoryHealth(memory);setBackfill(bf);
+    }catch{setMessage("Veri toplama metrikleri geçici olarak alınamadı")}
+  },[]);
+  useEffect(()=>{
+    if(view!=="Veri Toplama Merkezi")return;
+    void Promise.resolve().then(loadCollection);const timer=window.setInterval(()=>void loadCollection(),30_000);
+    return()=>window.clearInterval(timer);
+  },[view,loadCollection]);
   const chosen = analyses.find((x) => x.symbol === selected) || analyses[0];
   useEffect(() => {
     if (!selected) return;
@@ -391,10 +416,14 @@ export function DashboardShell() {
         {view === "İşlemler" && <Trades rows={trades} />}{" "}
         {view === "Bot Aktivitesi" && <ActivityFeed rows={decisions} />}{" "}
         {view === "Haberler / KAP" && (
-          <NewsPanel rows={news} health={newsHealth} onRefresh={async()=>{await api.refreshNews();await load()}} />
+          <NewsPanel rows={news} health={newsHealth} onRefresh={async()=>{await api.refreshNews();setNews(await api.newsArchive());await load()}} />
         )}{" "}
         {view === "Piyasa Hafızası" && (
           <MarketMemoryView symbols={analyses.map(item=>item.symbol)} health={memoryHealth} backfill={backfill}/>
+        )}{" "}
+        {view === "Veri Toplama Merkezi" && (
+          <DataCollectionCenter metrics={newsMetrics} sources={sourceHealth} reactions={reactionQueue}
+            memory={memoryHealth} backfill={backfill} activity={collectionActivity}/>
         )}{" "}
         {view === "Ayarlar" && (
           <SettingsView
@@ -1545,7 +1574,7 @@ function CombinedViewCard({analysis}:{analysis:Analysis}){
   return <section className="ai-opinion ready"><div className="ai-opinion-head"><div><span>BİRLEŞİK GÖRÜŞ</span><b>{combined?.combined_view||"BEKLENİYOR"}</b></div><em>EXECUTION AUTHORITY: FALSE</em></div><p>{combined?.summary||"Teknik ve haber bağlamı tamamlandığında oluşur."}</p>{combined?.main_risks?.length?<small>Risk: {combined.main_risks.join(" • ")}</small>:null}</section>
 }
 
-function MarketMemoryView({symbols,health,backfill}:{symbols:string[];health?:MarketMemoryHealth;backfill:BackfillState[]}){
+function MarketMemoryView({symbols,health,backfill}:{symbols:string[];health?:MarketMemoryHealth;backfill?:BackfillStatus}){
   const [symbol,setSymbol]=useState(symbols[0]||"THYAO");
   const [timeline,setTimeline]=useState<Array<{timestamp:string;price:number;trend?:string;structure?:string;score?:number}>>([]);
   const [archive,setArchive]=useState<NewsItem[]>([]);
@@ -1553,13 +1582,23 @@ function MarketMemoryView({symbols,health,backfill}:{symbols:string[];health?:Ma
   useEffect(()=>{void Promise.all([api.marketTrend(symbol),api.marketNews(symbol),api.eventStudy()]).then(([trend,items,eventStudy])=>{setTimeline(trend);setArchive(items);setStudy(eventStudy)}).catch(()=>{setTimeline([]);setArchive([]);setStudy([])})},[symbol]);
   const values=timeline.map(item=>item.price).filter(Number.isFinite), min=Math.min(...values),max=Math.max(...values),span=max-min||1;
   const points=timeline.map((item,index)=>`${timeline.length===1?0:index/(timeline.length-1)*100},${40-(item.price-min)/span*36}`).join(" ");
-  return <div className="memory-layout"><article className="panel"><div className="chart-head"><div><b>Piyasa Hafızası</b><span>{health?.snapshot_count||0} snapshot • {health?.reaction_count||0} reaction</span></div><select value={symbol} onChange={event=>setSymbol(event.target.value)}>{Array.from(new Set([symbol,...symbols])).map(item=><option key={item}>{item}</option>)}</select></div>{timeline.length?<><svg className="memory-chart" viewBox="0 0 100 44" preserveAspectRatio="none"><polyline points={points} fill="none" stroke="#36a3ff" strokeWidth="1"/></svg><div className="memory-timeline">{timeline.slice(-12).map(item=><div key={item.timestamp}><time>{fmtDate(item.timestamp)}</time><b>{money(item.price)}</b><span>{item.trend||"—"} • {item.structure||"—"} • skor {item.score??"—"}</span></div>)}</div></>:<Empty icon={Database} title="Snapshot henüz yok" text="Canlı tarama ve kademeli backfill sürdükçe bu zaman çizgisi dolacak."/>}</article><aside className="panel"><PanelTitle title="Backfill & Arşiv" sub="Cursor tabanlı, tekrar başlatılabilir"/><div className="health-row">{backfill.map(item=><span key={item.task}><b>{item.task}</b> {item.status} • cursor {item.cursor} • {item.processed_items} işlendi</span>)}</div><h3>{symbol} haber zaman çizgisi</h3><div className="chart-news-list">{archive.slice(-10).reverse().map(item=><a key={item.id} href={item.url} target="_blank" rel="noreferrer"><b>{item.source} {item.overnight_news?"• GECE":""}</b> {item.title}</a>)}</div><h3>Event study</h3><div className="health-row">{study.map(item=><span key={item.category}><b>{item.category}</b> n={item.news_count} • 1G {item.avg_return_1d?.toFixed(2)??"—"}% • pozitif %{item.positive_rate?.toFixed(0)??"—"}</span>)}</div></aside></div>
+  return <div className="memory-layout"><article className="panel"><div className="chart-head"><div><b>Piyasa Hafızası</b><span>{health?.snapshot_count||0} snapshot • {health?.reaction_count||0} reaction</span></div><select value={symbol} onChange={event=>setSymbol(event.target.value)}>{Array.from(new Set([symbol,...symbols])).map(item=><option key={item}>{item}</option>)}</select></div>{timeline.length?<><svg className="memory-chart" viewBox="0 0 100 44" preserveAspectRatio="none"><polyline points={points} fill="none" stroke="#36a3ff" strokeWidth="1"/></svg><div className="memory-timeline">{timeline.slice(-12).map(item=><div key={item.timestamp}><time>{fmtDate(item.timestamp)}</time><b>{money(item.price)}</b><span>{item.trend||"—"} • {item.structure||"—"} • skor {item.score??"—"}</span></div>)}</div></>:<Empty icon={Database} title="Snapshot henüz yok" text="Canlı tarama ve kademeli backfill sürdükçe bu zaman çizgisi dolacak."/>}</article><aside className="panel"><PanelTitle title="Backfill & Arşiv" sub="Cursor tabanlı, tekrar başlatılabilir"/><div className="health-row">{backfill?.tasks.map(item=><span key={item.task}><b>{item.task}</b> {item.status} • cursor {item.cursor} • {item.processed_items} işlendi</span>)}</div><h3>{symbol} haber zaman çizgisi</h3><div className="chart-news-list">{archive.slice(-10).reverse().map(item=><a key={item.id} href={item.url} target="_blank" rel="noreferrer"><b>{item.source} {item.overnight_news?"• GECE":""}</b> {item.title}</a>)}</div><h3>Event study</h3><div className="health-row">{study.map(item=><span key={item.category}><b>{item.category}</b> n={item.news_count} • 1G {item.avg_return_1d?.toFixed(2)??"—"}% • pozitif %{item.positive_rate?.toFixed(0)??"—"}</span>)}</div></aside></div>
+}
+
+function DataCollectionCenter({metrics,sources,reactions,memory,backfill,activity}:{metrics?:NewsMetrics;sources:NewsSourceHealth[];reactions?:ReactionQueueStatus;memory?:MarketMemoryHealth;backfill?:BackfillStatus;activity:CollectionActivity[]}){
+  const sourceFailures=sources.filter(item=>item.enabled&&["ERROR","WAF_BLOCKED","RATE_LIMITED"].includes(item.status));
+  const coreErrors=[backfill?.status,memory?.status].filter(item=>item==="ERROR").length;
+  const overall=!metrics&&!memory&&!backfill||coreErrors>=2?"ERROR":sourceFailures.length||backfill?.status==="PARTIAL"?"DEGRADED":"RUNNING";
+  const stat=(label:string,value:string|number)=><div><span>{label}</span><b>{value??"NOT_AVAILABLE"}</b></div>;
+  return <div className="collection-center"><div className={`collection-banner ${overall.toLowerCase()}`}><CloudDownload size={22}/><div><span>DATA COLLECTION</span><b>{overall}</b></div><small>30 saniyede bir sağlık ve metrik verileri yenilenir</small></div><div className="collector-grid"><article className="panel collector-card"><PanelTitle title="CANDLE BACKFILL" sub={backfill?.status||"NOT_AVAILABLE"}/><div className="progress"><i style={{width:`${backfill?.progress_pct||0}%`}}/></div><div className="collector-stats">{stat("Progress",`${backfill?.progress_pct||0}%`)}{stat("Cursor",backfill?.cursor||0)}{stat("Completed",backfill?.completed_symbols||0)}{stat("Remaining",backfill?.remaining_symbols||0)}{stat("Candles",backfill?.candle_count||0)}{stat("Last",backfill?.last_symbol||"—")}</div><div className="timeframe-strip">{["5m","15m","1h","1d"].map(x=><span key={x}>{x.toUpperCase()} <b>{backfill?.timeframes?.[x]||0}</b></span>)}</div>{backfill?.last_error&&<p className="collector-error">{backfill.last_error}</p>}</article><article className="panel collector-card"><PanelTitle title="MARKET MEMORY" sub={memory?.status||"NOT_AVAILABLE"}/><div className="collector-stats">{stat("Snapshots",memory?.snapshot_count||0)}{stat("Recorded",memory?.recorded_count||0)}{stat("Reconstructed",memory?.reconstructed_count||0)}{stat("Symbols",memory?.symbols||0)}{stat("Errors",memory?.error_count||0)}{stat("Last",memory?.last_snapshot_at?fmtDate(memory.last_snapshot_at):"—")}</div><div className="timeframe-strip">{["5m","15m","1h","1d"].map(x=><span key={x}>{x.toUpperCase()} <b>{memory?.timeframes?.[x]||0}</b></span>)}</div></article><article className="panel collector-card"><PanelTitle title="NEWS COLLECTION" sub="Normalize + dedupe + symbol mapping"/><div className="collector-stats">{stat("Total",metrics?.total_news||0)}{stat("24H",metrics?.news_last_24h||0)}{stat("7D",metrics?.news_last_7d||0)}{stat("30D",metrics?.news_last_30d||0)}{stat("Linked",metrics?.symbol_linked||0)}{stat("Unmatched",metrics?.unmatched||0)}{stat("AI Processed",metrics?.ai_processed||0)}{stat("AI Pending",metrics?.ai_pending||0)}{stat("Overnight",metrics?.overnight_count||0)}</div></article><article className="panel collector-card"><PanelTitle title="NEWS REACTION QUEUE" sub={`${reactions?.progress_pct||0}% complete`}/><div className="progress"><i style={{width:`${reactions?.progress_pct||0}%`}}/></div><div className="collector-stats">{stat("Pending",reactions?.pending||0)}{stat("Waiting Open",reactions?.waiting_market_open||0)}{stat("Waiting 15M",reactions?.waiting_15m||0)}{stat("Waiting 1H",reactions?.waiting_1h||0)}{stat("Waiting 1D",reactions?.waiting_1d||0)}{stat("Waiting 5D",reactions?.waiting_5d||0)}{stat("Complete",reactions?.complete||0)}{stat("Error",reactions?.error||0)}</div></article></div><article className="panel table-panel"><PanelTitle title="Source Status" sub="KAP WAF_BLOCKED beklenen dış servis kısıtıdır"/><div className="table-scroll"><table><thead><tr><th>Source</th><th>Type</th><th>Status</th><th>Last Success</th><th>Last Item</th><th>Fetched</th><th>Inserted</th><th>Duplicates</th><th>Failures</th><th>Last Error</th></tr></thead><tbody>{sources.map(item=><tr key={item.source}><td><b>{item.source}</b></td><td>{item.type}</td><td><span className={`collector-status ${item.status==="WAF_BLOCKED"?"warning":""}`}>{item.status}</span></td><td>{item.last_success_at?fmtDate(item.last_success_at):"—"}</td><td>{item.last_item_at?fmtDate(item.last_item_at):"—"}</td><td>{item.items_fetched}</td><td>{item.items_inserted}</td><td>{item.duplicates}</td><td>{item.consecutive_failures}</td><td>{item.last_error||"—"}</td></tr>)}</tbody></table></div></article><article className="panel table-panel"><PanelTitle title="Son Veri Toplama İşlemleri" sub="Kalıcı collector activity günlüğü"/><div className="table-scroll"><table><thead><tr><th>Time</th><th>Module</th><th>Source / Symbol</th><th>Action</th><th>Status</th><th>Detail</th></tr></thead><tbody>{activity.map(item=><tr key={item.id}><td>{fmtDate(item.created_at)}</td><td>{item.module}</td><td>{item.subject||"—"}</td><td>{item.action}</td><td>{item.status}</td><td>{item.detail||"—"}</td></tr>)}</tbody></table></div></article></div>
 }
 
 function NewsPanel({rows,health,onRefresh}:{rows:NewsItem[];health?:NewsHealth;onRefresh:()=>Promise<void>}){
-  const [filter,setFilter]=useState("ALL"),[query,setQuery]=useState(""),[overnight,setOvernight]=useState(false),[reaction,setReaction]=useState(false);
-  const filtered=rows.filter(item=>(filter==="ALL"||filter==="KAP"&&item.source==="KAP"||filter==="POSITIVE"&&item.ai_sentiment==="POSITIVE"||filter==="NEGATIVE"&&item.ai_sentiment==="NEGATIVE"||filter==="IMPORTANT"&&(item.ai_importance||0)>=80)&&(!query||`${item.symbol} ${item.title} ${item.category}`.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")))&&(!overnight||item.overnight_news)&&(!reaction||item.reaction));
-  return <><article className="panel news-health"><PanelTitle title="News Health" sub={`Durum: ${health?.status||"NO_DATA"} • 24s: ${health?.last_24h||0} • Önemli: ${health?.important_24h||0} • Gece: ${health?.overnight_24h||0} • KAP: ${health?.kap_24h||0}`}/><div className="health-row">{Object.entries(health?.sources||{}).map(([source,state])=><span key={source}><b>{source}</b> {state.status} • {state.new_items} yeni • {state.parse_errors} parse hata</span>)}</div></article><article className="panel table-panel"><div className="chart-head"><div><b>Haber Arşivi</b><span>{filtered.length} kayıt</span></div><div className="timeframes">{[["ALL","Tümü"],["KAP","KAP"],["POSITIVE","Positive"],["NEGATIVE","Negative"],["IMPORTANT","Önem ≥80"]].map(([key,label])=><button key={key} className={filter===key?"active":""} onClick={()=>setFilter(key)}>{label}</button>)}<button onClick={()=>void onRefresh()}><RefreshCw size={14}/> Yenile</button></div></div><div className="archive-filters"><input placeholder="Sembol, başlık, kategori ara" value={query} onChange={event=>setQuery(event.target.value)}/><label><input type="checkbox" checked={overnight} onChange={event=>setOvernight(event.target.checked)}/> Gece haberleri</label><label><input type="checkbox" checked={reaction} onChange={event=>setReaction(event.target.checked)}/> Reaction hazır</label></div><div className="table-scroll"><table><thead><tr><th>Saat</th><th>Sembol</th><th>Kaynak</th><th>Başlık</th><th>Kategori</th><th>Sentiment</th><th>Önem</th><th>Gece</th><th>1G tepki</th><th>5G tepki</th><th>AI Özet</th></tr></thead><tbody>{filtered.map(item=><tr key={`${item.source}-${item.source_id||item.id}`}><td>{fmtDate(item.published_at)}</td><td><b>{item.symbol||"—"}</b></td><td>{item.source}</td><td><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></td><td>{item.category}</td><td>{item.ai_sentiment||"BEKLIYOR"}</td><td>{item.ai_importance??"—"}</td><td>{item.overnight_news?"EVET":"—"}</td><td>{item.reaction?.return_1d?.toFixed(2)??"—"}%</td><td>{item.reaction?.return_5d?.toFixed(2)??"—"}%</td><td>{item.ai_summary||"—"}</td></tr>)}</tbody></table></div></article></>
+  const [query,setQuery]=useState(""),[source,setSource]=useState("ALL"),[category,setCategory]=useState("ALL"),[sentiment,setSentiment]=useState("ALL"),[importance,setImportance]=useState("0"),[start,setStart]=useState(""),[end,setEnd]=useState(""),[overnight,setOvernight]=useState(false),[reaction,setReaction]=useState(false);
+  const filtered=rows.filter(item=>(source==="ALL"||item.source===source)&&(category==="ALL"||item.category===category)&&(sentiment==="ALL"||item.ai_sentiment===sentiment)&&(item.ai_importance||0)>=Number(importance)&&(!query||`${item.symbol} ${item.title}`.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")))&&(!start||new Date(item.published_at)>=new Date(start))&&(!end||new Date(item.published_at)<=new Date(`${end}T23:59:59`))&&(!overnight||item.overnight_news)&&(!reaction||item.reaction?.status==="COMPLETE"));
+  const values=(key:"source"|"category")=>Array.from(new Set(rows.map(item=>item[key]).filter(Boolean))).sort();
+  const ret=(value?:number)=>value==null?"—":`${value.toFixed(2)}%`;
+  return <><article className="panel news-health"><PanelTitle title="News Health" sub={`Durum: ${health?.status||"NO_DATA"} • 24s: ${health?.last_24h||0} • Önemli: ${health?.important_24h||0} • Gece: ${health?.overnight_24h||0} • KAP: ${health?.kap_24h||0}`}/><div className="health-row">{Object.entries(health?.sources||{}).map(([name,state])=><span key={name}><b>{name}</b> {state.status} • {state.new_items} yeni • {state.parse_errors} parse hata</span>)}</div></article><article className="panel table-panel"><div className="chart-head"><div><b>Haber Arşivi</b><span>{filtered.length} / {rows.length} kayıt</span></div><button className="scan" onClick={()=>void onRefresh()}><RefreshCw size={14}/> Yenile</button></div><div className="archive-filters wide"><input placeholder="Sembol veya başlık ara" value={query} onChange={e=>setQuery(e.target.value)}/><input type="date" value={start} onChange={e=>setStart(e.target.value)}/><input type="date" value={end} onChange={e=>setEnd(e.target.value)}/><select value={source} onChange={e=>setSource(e.target.value)}><option value="ALL">Tüm kaynaklar</option>{values("source").map(x=><option key={x}>{x}</option>)}</select><select value={category} onChange={e=>setCategory(e.target.value)}><option value="ALL">Tüm kategoriler</option>{values("category").map(x=><option key={x}>{x}</option>)}</select><select value={sentiment} onChange={e=>setSentiment(e.target.value)}><option value="ALL">Tüm sentiment</option><option>POSITIVE</option><option>NEUTRAL</option><option>NEGATIVE</option></select><select value={importance} onChange={e=>setImportance(e.target.value)}><option value="0">Tüm önem</option><option value="50">Önem ≥50</option><option value="80">Önem ≥80</option></select><label><input type="checkbox" checked={overnight} onChange={e=>setOvernight(e.target.checked)}/> Overnight only</label><label><input type="checkbox" checked={reaction} onChange={e=>setReaction(e.target.checked)}/> Reaction complete only</label></div><div className="table-scroll"><table><thead><tr><th>Date</th><th>Symbol</th><th>Source</th><th>Title</th><th>Category</th><th>Sentiment</th><th>Importance</th><th>Reaction status</th><th>15M</th><th>1H</th><th>1D</th><th>5D</th><th>Abnormal 1D</th><th>AI summary</th></tr></thead><tbody>{filtered.map(item=><tr key={`${item.source}-${item.source_id||item.id}`}><td>{fmtDate(item.published_at)}</td><td><b>{item.symbol||"UNMATCHED"}</b></td><td>{item.source}</td><td><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></td><td>{item.category}</td><td>{item.ai_sentiment||"PENDING"}</td><td>{item.ai_importance??"—"}</td><td>{item.reaction?.status||"NOT_AVAILABLE"}</td><td>{ret(item.reaction?.return_15m)}</td><td>{ret(item.reaction?.return_1h)}</td><td>{ret(item.reaction?.return_1d)}</td><td>{ret(item.reaction?.return_5d)}</td><td>{ret(item.reaction?.abnormal_return_1d)}</td><td>{item.ai_summary||"—"}</td></tr>)}</tbody></table></div></article></>
 }
 
 function Positions({ rows }: { rows: Position[] }) {
