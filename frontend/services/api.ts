@@ -1,4 +1,4 @@
-import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,NewsHealth,NewsItem,Portfolio,Position,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
+import type {Analysis,Candle,DataHealth,Decision,ForwardStatus,NewsHealth,NewsItem,Portfolio,Position,ScannerStatus,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
 const API = "/api";
 
 async function get<T>(path: string): Promise<T> {
