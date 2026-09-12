@@ -24,6 +24,10 @@ services:
         value: "300"
       - key: AFTER_HOURS_POLL_SECONDS
         value: "900"
+      - key: SCANNER_SYMBOL_LIMIT
+        value: "30"
+      - key: MANUAL_SCAN_SYMBOL_LIMIT
+        value: "10"
       - key: AI_ENABLED
         value: "true"
       - key: AI_PROVIDER
