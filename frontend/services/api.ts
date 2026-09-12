@@ -14,6 +14,7 @@ export const api = {
   trades: () => get<Trade[]>("/trades"),
   watchlist: () => get<WatchItem[]>("/watchlist"),
   analyses: () => get<Analysis[]>("/scanner/results"),
+  scannerStatus: () => get<ScannerStatus>("/scanner/status"),
   decisions: () => get<Decision[]>("/decisions"),
   candles: (symbol: string, timeframe = "15m") =>
     get<Candle[]>(`/candles/${symbol}?timeframe=${timeframe}`),
@@ -31,8 +32,9 @@ export const api = {
   symbolNews: (symbol:string) => get<NewsItem[]>(`/news/${symbol}`),
   newsHealth: () => get<NewsHealth>("/news/health"),
   refreshNews: async () => {const r=await fetch(`${API}/news/refresh`,{method:"POST"});if(!r.ok)throw new Error("Haber yenilenemedi");return r.json()},
-  scan: async () => {
-    const r = await fetch(`${API}/scanner/run`, { method: "POST" });
+  scan: async (maxSymbols?: number) => {
+    const query = maxSymbols ? `?max_symbols=${maxSymbols}` : "";
+    const r = await fetch(`${API}/scanner/run${query}`, { method: "POST" });
     if (!r.ok) throw new Error("Tarama başlatılamadı");
     return r.json();
   },
