@@ -294,7 +294,7 @@ export function DashboardShell() {
             </button>
             <button
               className="scan"
-              onClick={scan}
+              onClick={() => void scan()}
               disabled={loading || forward?.market_status !== "MARKET OPEN"}
             >
               <RefreshCw size={16} className={loading ? "spin" : ""} />
