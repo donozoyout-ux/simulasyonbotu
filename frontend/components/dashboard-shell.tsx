@@ -1660,7 +1660,7 @@ function MarketMemoryView({symbols,health,backfill}:{symbols:string[];health?:Ma
   const inspectNews=useCallback((item:NewsItem)=>setSelectedNews(item),[]);
   const latestSnapshot=timeline.at(-1),latestCandle=candles.at(-1),firstTime=candles[0]?.timestamp,lastTime=latestCandle?.timestamp;
   const inChart=(stamp:string)=>!firstTime||!lastTime||(new Date(stamp)>=new Date(firstTime)&&new Date(stamp)<=new Date(lastTime));
-  const chartSnapshots=timeline.filter(item=>inChart(item.timestamp)),chartNews=archive.filter(item=>inChart(item.published_at));
+  const chartSnapshots=timeline.filter(item=>inChart(item.timestamp)),chartNews=archive.filter(item=>!firstTime||!lastTime||(new Date(item.published_at).getTime()>=new Date(firstTime).getTime()-72*3600000&&new Date(item.published_at).getTime()<=new Date(lastTime).getTime()+72*3600000));
   const levelSnapshot=detail?.snapshot||chartSnapshots.at(-1)||latestSnapshot,levels=levelSnapshot&&(levelSnapshot.support!=null||levelSnapshot.resistance!=null)?{support:levelSnapshot.support,resistance:levelSnapshot.resistance}:undefined;
   const source=Array.from(new Set(candles.map(item=>item.source).filter(Boolean))).join(" / ")||"DB";
   const completed=inventory.reduce((sum,item)=>sum+item.completed_reaction_count,0),linked=inventory.reduce((sum,item)=>sum+item.news_count,0);

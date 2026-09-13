@@ -27,7 +27,7 @@ export function PriceChart({candles,levels,swings=[],entries=[],exits=[],news=[]
     if(overlays.has("vwap"))addIndicator(c=>c.indicators?.vwap,"#e7eef7",1);
     if(overlays.has("bollinger")){addIndicator(c=>c.indicators?.bollinger?.upper,"#66798f");addIndicator(c=>c.indicators?.bollinger?.middle,"#506176");addIndicator(c=>c.indicators?.bollinger?.lower,"#66798f")}
     const candleTimes=new Set(candles.map(item=>item.timestamp));
-    const nearest=(stamp:string)=>candles.find(row=>new Date(row.timestamp).getTime()>=new Date(stamp).getTime());
+    const nearest=(stamp:string)=>{const target=new Date(stamp).getTime();return candles.reduce((best,row)=>Math.abs(new Date(row.timestamp).getTime()-target)<Math.abs(new Date(best.timestamp).getTime()-target)?row:best,candles[0])};
     const markers:SeriesMarker<Time>[]=[...swings.filter(s=>candleTimes.has(s.timestamp)).map(s=>({time:time(s.timestamp),position:s.type==="SWING_HIGH"?"aboveBar" as const:"belowBar" as const,color:s.type==="SWING_HIGH"?"#f5ad45":"#36a3ff",shape:s.type==="SWING_HIGH"?"arrowDown" as const:"arrowUp" as const,text:s.type==="SWING_HIGH"?"SH":"SL"}))];
     for(const item of entries){const match=nearest(item.timestamp);if(match)markers.push({time:time(match.timestamp),position:"belowBar",color:"#14d99a",shape:"arrowUp",text:item.label||`BUY ${item.price.toFixed(2)}`})}
     for(const item of exits){const match=nearest(item.timestamp);if(match)markers.push({time:time(match.timestamp),position:"aboveBar",color:item.label==="STOP"?"#ef5b64":"#b786ff",shape:"circle",text:item.label||`EXIT ${item.price.toFixed(2)}`})}
