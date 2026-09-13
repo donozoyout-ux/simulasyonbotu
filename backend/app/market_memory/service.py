@@ -12,6 +12,14 @@ from app.market_data.provider import CandleData
 from app.market_data.market_session import BistMarketSession
 from app.models import Analysis, Candle, MarketStateSnapshot, NewsItem, NewsMarketReaction
 from app.services.collection_activity import log_activity
+from app.services.historical_candles import BoundedTTLCache
+
+
+_aggregate_cache = BoundedTTLCache(max_entries=32)
+
+
+def aggregate_cache_stats() -> dict:
+    return _aggregate_cache.stats()
 
 
 def _decimal(value):
@@ -107,7 +115,8 @@ class MarketMemoryService:
         stmt = select(MarketStateSnapshot).where(MarketStateSnapshot.symbol == symbol.upper())
         if start: stmt = stmt.where(MarketStateSnapshot.timestamp >= start)
         if end: stmt = stmt.where(MarketStateSnapshot.timestamp <= end)
-        return self.db.scalars(stmt.order_by(MarketStateSnapshot.timestamp).limit(limit)).all()
+        return list(reversed(self.db.scalars(
+            stmt.order_by(desc(MarketStateSnapshot.timestamp)).limit(limit)).all()))
 
     def _frames(self, symbol: str, at: datetime) -> dict[str, list[Candle]]:
         frames = {}
@@ -134,19 +143,30 @@ class MarketMemoryService:
         return self.payload_from_analysis(transient, "RECONSTRUCTED")
 
     def trend(self, symbol: str, start=None, end=None, limit=1000):
+        stmt = select(MarketStateSnapshot.timestamp, MarketStateSnapshot.price, MarketStateSnapshot.trend,
+            MarketStateSnapshot.market_structure, MarketStateSnapshot.technical_score,
+            MarketStateSnapshot.bos, MarketStateSnapshot.choch, MarketStateSnapshot.analysis_mode
+        ).where(MarketStateSnapshot.symbol == symbol.upper())
+        if start: stmt = stmt.where(MarketStateSnapshot.timestamp >= start)
+        if end: stmt = stmt.where(MarketStateSnapshot.timestamp <= end)
+        rows = list(reversed(self.db.execute(
+            stmt.order_by(desc(MarketStateSnapshot.timestamp)).limit(limit)).all()))
         return [{"timestamp": row.timestamp, "price": row.price, "trend": row.trend,
-                 "structure": row.market_structure, "score": row.technical_score, "bos": row.bos, "choch": row.choch,
-                 "analysis_mode":row.analysis_mode}
-                for row in self.history(symbol, start, end, limit)]
+                 "structure": row.market_structure, "score": row.technical_score, "bos": row.bos,
+                 "choch": row.choch, "analysis_mode": row.analysis_mode} for row in rows]
 
     def news(self, symbol: str, start=None, end=None, limit=500):
         stmt = select(NewsItem).where(NewsItem.symbol == symbol.upper())
         if start: stmt = stmt.where(NewsItem.published_at >= start)
         if end: stmt = stmt.where(NewsItem.published_at <= end)
-        return self.db.scalars(stmt.order_by(NewsItem.published_at).limit(limit)).all()
+        return list(reversed(self.db.scalars(stmt.order_by(desc(NewsItem.published_at)).limit(limit)).all()))
 
     def memory_symbols(self):
         """Small aggregate inventory used by the UI filters; no provider access."""
+        cache_key = ("memory_symbols", id(self.db.get_bind()))
+        cached = _aggregate_cache.get(cache_key)
+        if cached is not None:
+            return cached
         inventory = {}
         for symbol, count, latest in self.db.execute(select(
             MarketStateSnapshot.symbol, func.count(MarketStateSnapshot.id), func.max(MarketStateSnapshot.timestamp)
@@ -169,8 +189,10 @@ class MarketMemoryService:
                 "reaction_count": 0, "completed_reaction_count": 0, "latest_snapshot_at": None,
                 "latest_news_at": None})
             row.update(reaction_count=count, completed_reaction_count=complete or 0)
-        return sorted(inventory.values(), key=lambda row: (
+        result = sorted(inventory.values(), key=lambda row: (
             -row["news_count"], -row["snapshot_count"], row["symbol"]))
+        _aggregate_cache.put(cache_key, result, 30)
+        return result
 
     def linked_news_symbols(self):
         rows = [row for row in self.memory_symbols() if row["news_count"]]
@@ -384,6 +406,10 @@ class MarketMemoryService:
         return result
 
     def health(self):
+        cache_key = ("health", id(self.db.get_bind()))
+        cached = _aggregate_cache.get(cache_key)
+        if cached is not None:
+            return dict(cached)
         snapshot_count = self.db.scalar(select(func.count()).select_from(MarketStateSnapshot)) or 0
         candle_count = self.db.scalar(select(func.count()).select_from(Candle)) or 0
         frames=dict(self.db.execute(select(MarketStateSnapshot.timeframe,func.count()).group_by(MarketStateSnapshot.timeframe)).all())
@@ -392,10 +418,12 @@ class MarketMemoryService:
         errors=self.db.scalar(select(func.count()).select_from(MarketStateSnapshot).where(MarketStateSnapshot.data_quality=="INVALID")) or 0
         symbols=self.db.scalar(select(func.count(func.distinct(MarketStateSnapshot.symbol)))) or 0
         last=self.db.scalar(select(func.max(MarketStateSnapshot.timestamp)))
-        return {"status": "OK" if snapshot_count else "NO_DATA", "price_history": "OK" if candle_count else "NO_DATA",
+        result = {"status": "OK" if snapshot_count else "NO_DATA", "price_history": "OK" if candle_count else "NO_DATA",
             "snapshot_count": snapshot_count, "reaction_count": self.db.scalar(select(func.count()).select_from(NewsMarketReaction)) or 0,
             "news_count": self.db.scalar(select(func.count()).select_from(NewsItem)) or 0,
             "candle_count": candle_count,"symbols":symbols,"recorded_count":recorded,"reconstructed_count":reconstructed,
             "error_count":errors,"timeframes":{key:frames.get(key,0) for key in ("5m","15m","1h","1d")},
             "last_snapshot":last,"last_snapshot_at":last,
             "last_news": self.db.scalar(select(func.max(NewsItem.published_at)))}
+        _aggregate_cache.put(cache_key, result, 30)
+        return dict(result)

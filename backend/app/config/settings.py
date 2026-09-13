@@ -9,6 +9,10 @@ class AppSettings(BaseSettings):
     app_name: str = "BIST Sanal Portföy"
     api_prefix: str = "/api"
     database_url: str = "sqlite:///./bist_simulator.db"
+    db_pool_size: int = 5
+    db_max_overflow: int = 2
+    db_pool_timeout_seconds: int = 15
+    db_pool_recycle_seconds: int = 900
     data_mode: str = "live"
 
     # Market data

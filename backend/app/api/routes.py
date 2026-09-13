@@ -2,14 +2,13 @@ from decimal import Decimal
 from datetime import datetime,timedelta,timezone
 import json
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.config.settings import get_settings
 from app.ai.groq_advisor import ai_health
-from app.analysis.indicators import indicator_series
 from app.db.session import get_db
 from app.models import Analysis, Candle, DailySummary, DecisionLog, ForwardRun, Portfolio, PortfolioSnapshot, Position, ScanRun, Setting, SymbolHealth, Trade, WatchlistItem
 from app.market_data.market_session import BistMarketSession
@@ -22,8 +21,9 @@ from app.services.telegram import TelegramNotifier
 from app.news.service import NewsService
 from app.news.reconciliation import NewsSymbolReconciliationService
 from app.market_memory.backfill import BackfillService
-from app.market_memory.service import MarketMemoryService
+from app.market_memory.service import MarketMemoryService, aggregate_cache_stats
 from app.services.collection_activity import recent_activity
+from app.services.historical_candles import candle_read_cache, historical_candles, invalidate_candle_cache
 
 router = APIRouter()
 config = get_settings()
@@ -404,7 +404,15 @@ def market_history(symbol:str,start:datetime|None=None,end:datetime|None=None,
 
 @router.get("/market-memory/health")
 def market_memory_health(db:Session=Depends(get_db)):
-    return dump(MarketMemoryService(db,config).health())
+    result=MarketMemoryService(db,config).health()
+    result["historical_read_cache"]=candle_read_cache.stats()
+    result["aggregate_cache"]=aggregate_cache_stats()
+    pool=db.get_bind().pool
+    result["database_pool"]={"type":type(pool).__name__,
+        "checked_out":pool.checkedout() if hasattr(pool,"checkedout") else None,
+        "size":pool.size() if hasattr(pool,"size") else None,
+        "overflow":pool.overflow() if hasattr(pool,"overflow") else None}
+    return dump(result)
 
 
 @router.get("/market-memory/symbols")
@@ -428,28 +436,28 @@ def run_backfill(batch_size:int|None=Query(None,ge=1,le=5),db:Session=Depends(ge
 
 
 @router.get("/candles/{symbol}")
-def candles(symbol: str, timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$"),
-    limit: int = Query(200, ge=1, le=1000),at:datetime|None=None,start:datetime|None=None,
+def candles(symbol: str,response:Response,timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$"),
+    limit: int = Query(200, ge=1, le=5000),at:datetime|None=None,start:datetime|None=None,
     end:datetime|None=None,db_only:bool=False,db: Session = Depends(get_db)):
     if start and end and start>end:raise HTTPException(422,"start, end değerinden sonra olamaz")
-    stmt=select(Candle).where(Candle.symbol == symbol.upper(), Candle.timeframe == timeframe)
-    if start:stmt=stmt.where(Candle.timestamp>=start)
-    if end:stmt=stmt.where(Candle.timestamp<=end)
-    if at:stmt=stmt.where(Candle.timestamp<=at)
-    rows = db.scalars(stmt.order_by(desc(Candle.timestamp)).limit(limit)).all()
-    if timeframe=="5m" and at is None and not db_only and len(rows)<min(limit,35):
+    result=historical_candles(db,symbol,timeframe,limit,at,start,end)
+    if timeframe=="5m" and at is None and not db_only and len(result.payload)<min(limit,35):
         try:
             fetched=BistScanner(db,config).provider.get_candles(symbol.upper(),timeframe,max(limit,220))
-            existing={row.timestamp for row in rows}
+            existing=set(db.scalars(select(Candle.timestamp).where(Candle.symbol==symbol.upper(),
+                Candle.timeframe==timeframe,Candle.timestamp.in_([item.timestamp for item in fetched]))).all())
             for candle in fetched:
                 if candle.timestamp not in existing:db.add(Candle(symbol=symbol.upper(),timeframe=timeframe,timestamp=candle.timestamp,
                     open=candle.open,high=candle.high,low=candle.low,close=candle.close,volume=candle.volume,source="hybrid"))
-            db.commit();rows=db.scalars(select(Candle).where(Candle.symbol==symbol.upper(),Candle.timeframe==timeframe).order_by(desc(Candle.timestamp)).limit(limit)).all()
+            db.commit();invalidate_candle_cache();result=historical_candles(db,symbol,timeframe,limit,at,start,end)
         except Exception as exc:
-            if not rows:raise HTTPException(503,f"5M veri alınamadı: {type(exc).__name__}") from None
-    ordered=list(reversed(rows));series=indicator_series(ordered)
-    return dump([{**{key:getattr(row,key) for key in ("timestamp","open","high","low","close","volume","source")},
-        "indicators":series[index]} for index,row in enumerate(ordered)])
+            if not result.payload:raise HTTPException(503,f"5M veri alınamadı: {type(exc).__name__}") from None
+    timing=result.timings_ms
+    response.headers["Server-Timing"]=(f'db;dur={timing["db"]}, indicator;dur={timing["indicator"]}, '
+        f'serialize;dur={timing["serialize"]}, app;dur={timing["total"]}, '
+        f'queries;desc="{result.query_count}", cache;desc="{result.cache_status}"')
+    response.headers["X-Historical-Cache"] = result.cache_status
+    return result.payload
 
 
 @router.get("/decisions")

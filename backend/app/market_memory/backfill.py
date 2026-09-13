@@ -9,6 +9,10 @@ from app.market_data.yahoo_provider import YahooMarketDataProvider
 from app.models import BackfillState, Candle, MarketStateSnapshot
 from app.market_memory.service import MarketMemoryService, candle_quality
 from app.services.collection_activity import log_activity
+from app.services.historical_candles import BoundedTTLCache
+
+
+_status_cache = BoundedTTLCache(max_entries=8)
 
 
 class BackfillService:
@@ -20,21 +24,27 @@ class BackfillService:
         self.symbols = symbols or BIST100_SYMBOLS
 
     def status(self):
+        cache_key=("backfill_status",id(self.db.get_bind()))
+        cached=_status_cache.get(cache_key)
+        if cached is not None:return cached
         states=self.db.scalars(select(BackfillState).order_by(BackfillState.task)).all()
         state=next((row for row in states if row.task==self.task),None)
         cursor=state.cursor if state else 0;total=len(self.symbols)
         completed=total if state and state.status=="COMPLETE" else min(cursor,total)
         frames=dict(self.db.execute(select(Candle.timeframe,func.count()).group_by(Candle.timeframe)).all())
         details=(state.details or {}) if state else {}
-        return {"status":state.status if state else "PENDING","cursor":cursor,"universe_total":total,
+        result={"status":state.status if state else "PENDING","cursor":cursor,"universe_total":total,
             "completed_symbols":completed,"remaining_symbols":max(total-completed,0),
             "progress_pct":round(completed*100/total,1) if total else 0.0,
             "candle_count":sum(frames.values()),"last_symbol":details.get("last_symbol"),
             "last_timeframe":details.get("last_timeframe"),"last_run_at":state.last_run_at if state else None,
             "last_error":state.error if state else None,"timeframes":{key:frames.get(key,0) for key in ("5m","15m","1h","1d")},
             "tasks":states}
+        _status_cache.put(cache_key,result,30)
+        return result
 
     def run(self, batch_size=None):
+        _status_cache.clear()
         size = min(max(1, batch_size or self.config.backfill_symbols_per_cycle), 5)
         state = self.db.get(BackfillState, self.task) or BackfillState(task=self.task)
         self.db.add(state)
@@ -42,6 +52,8 @@ class BackfillService:
         if state.status == "COMPLETE":
             return {"status": "COMPLETE", "cursor": state.cursor, "processed_symbols": 0,
                 "added_candles": 0, "errors": [], "quality": state.details.get("quality", {})}
+        # Do not hold a database transaction while the provider performs network I/O.
+        self.db.commit()
         total_added, errors, quality = 0, [], {}
         for offset in range(size):
             symbol = self.symbols[(state.cursor + offset) % len(self.symbols)]
@@ -53,8 +65,10 @@ class BackfillService:
                     quality[symbol][timeframe] = candle_quality(rows, timeframe)
                     def key(value):
                         return value if value.tzinfo is None else value.astimezone(timezone.utc).replace(tzinfo=None)
+                    candidate_times = [row.timestamp for row in rows]
                     existing = {key(value) for value in self.db.scalars(select(Candle.timestamp).where(
-                        Candle.symbol == symbol, Candle.timeframe == timeframe)).all()}
+                        Candle.symbol == symbol, Candle.timeframe == timeframe,
+                        Candle.timestamp.in_(candidate_times))).all()} if candidate_times else set()
                     for row in rows:
                         timestamp_key = key(row.timestamp)
                         if timestamp_key not in existing:
@@ -63,10 +77,13 @@ class BackfillService:
                             existing.add(timestamp_key); total_added += 1
                     log_activity(self.db,"BACKFILL",f"{symbol} {timeframe}","FETCH","INSERTED",
                         f"{total_added-before_added} candles")
+                    # Short transactions let latency-sensitive API reads share the pool.
+                    self.db.commit()
                 except Exception as exc:
+                    self.db.rollback()
                     errors.append({"symbol": symbol, "timeframe": timeframe, "error": type(exc).__name__})
                     log_activity(self.db,"BACKFILL",f"{symbol} {timeframe}","FETCH","ERROR",type(exc).__name__)
-            self.db.commit()
+                    self.db.commit()
             try:
                 latest = self.db.scalar(select(Candle.timestamp).where(Candle.symbol == symbol,
                     Candle.timeframe == "15m").order_by(Candle.timestamp.desc()).limit(1))
@@ -91,6 +108,7 @@ class BackfillService:
             "cycle_complete": state.cursor == 0, "provider": "yahoo", "news_backfill": "SOURCE_LIMITED",
             "last_symbol":symbol,"last_timeframe":"1d"}
         self.db.commit()
+        _status_cache.clear()
         return {"status": state.status, "cursor": state.cursor, "processed_symbols": size,
             "added_candles": total_added, "errors": errors, "quality": quality}
 
@@ -115,4 +133,5 @@ class BackfillService:
                 self.db.delete(row)
             deleted += len(rows)
         self.db.commit()
+        _status_cache.clear()
         return {"status": "OK", "deleted": deleted}

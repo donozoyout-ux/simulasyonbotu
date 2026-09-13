@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 import httpx
 from sqlalchemy import create_engine, func, select
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -248,6 +249,59 @@ def test_historical_candles_api_filters_range_limit_and_reports_source(db):
     assert [item["close"] for item in response.json()] == [103.0, 104.0]
     assert all(item["source"] == "test" for item in response.json())
     assert invalid.status_code == 422
+
+
+def test_historical_candle_cache_is_bounded_keyed_and_avoids_repeat_queries(db):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.routes import router
+    from app.db.session import get_db
+    from app.services.historical_candles import candle_read_cache
+    base = datetime(2026, 1, 1)
+    for index in range(400): add_candle(db,"BIMAS","15m",base+timedelta(minutes=15*index),100+index/100)
+    db.commit(); candle_read_cache.clear(); statements=[]
+    def before_cursor_execute(_conn,_cursor,statement,_parameters,_context,_executemany):
+        if statement.lstrip().upper().startswith("SELECT"): statements.append(statement)
+    event.listen(db.get_bind(),"before_cursor_execute",before_cursor_execute)
+    app=FastAPI();app.include_router(router,prefix="/api");app.dependency_overrides[get_db]=lambda:db
+    try:
+        with TestClient(app) as client:
+            cold=client.get("/api/candles/BIMAS?timeframe=15m&limit=100&db_only=true")
+            cold_queries=len(statements);statements.clear()
+            warm=client.get("/api/candles/BIMAS?timeframe=15m&limit=100&db_only=true")
+            warm_queries=len(statements);statements.clear()
+            other_key=client.get("/api/candles/BIMAS?timeframe=15m&limit=101&db_only=true")
+    finally:
+        event.remove(db.get_bind(),"before_cursor_execute",before_cursor_execute)
+    assert cold.status_code==warm.status_code==other_key.status_code==200
+    assert cold_queries==2 and warm_queries==0 and len(statements)==2
+    assert cold.headers["x-historical-cache"]=="MISS" and warm.headers["x-historical-cache"]=="HIT"
+    assert 'queries;desc="0"' in warm.headers["server-timing"]
+    assert len(cold.json())==100 and len(other_key.json())==101
+
+
+def test_bounded_ttl_cache_expires_and_evicts_oldest(monkeypatch):
+    import app.services.historical_candles as module
+    cache=module.BoundedTTLCache(max_entries=2);clock=[10.0]
+    monkeypatch.setattr(module,"monotonic",lambda:clock[0])
+    cache.put(("a",),1,5);cache.put(("b",),2,5);cache.put(("c",),3,5)
+    assert cache.get(("a",)) is None and cache.get(("b",))==2
+    clock[0]=16.0
+    assert cache.get(("b",)) is None and cache.stats()["entries"]<=2
+
+
+def test_snapshot_detail_query_count_stays_bounded(db):
+    at=datetime(2026,9,1,10,tzinfo=timezone.utc);row=analysis(at);db.add(row)
+    service=MarketMemoryService(db,config());service.record_analysis(row)
+    for index in range(1,41):add_candle(db,"ASELS","15m",at+timedelta(minutes=15*index),100+index)
+    for index in range(1,6):add_candle(db,"ASELS","1d",at+timedelta(days=index),100+index)
+    db.commit();queries=[]
+    def before_cursor_execute(_conn,_cursor,statement,_parameters,_context,_executemany):
+        if statement.lstrip().upper().startswith("SELECT"):queries.append(statement)
+    event.listen(db.get_bind(),"before_cursor_execute",before_cursor_execute)
+    try: service.snapshot_detail("ASELS",at)
+    finally:event.remove(db.get_bind(),"before_cursor_execute",before_cursor_execute)
+    assert len(queries)<=7
 
 
 def test_db_only_candles_never_calls_external_provider(monkeypatch, db):

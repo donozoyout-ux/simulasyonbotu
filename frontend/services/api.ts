@@ -1,8 +1,8 @@
 import type {Analysis,BackfillStatus,Candle,CollectionActivity,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketMemorySymbol,MarketSnapshot,NewsHealth,NewsItem,NewsMetrics,NewsReaction,NewsSourceHealth,Portfolio,Position,ReactionQueueStatus,ScannerRunResponse,ScannerStatus,Snapshot,SnapshotDetail,StrategyHealth,Trade,UnmatchedNews,WatchItem} from "@/types";
 const API = "/api";
 
-async function get<T>(path: string): Promise<T> {
-  const response = await fetch(`${API}${path}`, { cache: "no-store" });
+async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`${API}${path}`, { cache: "no-store", signal });
   if (!response.ok)
     throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
@@ -18,10 +18,10 @@ export const api = {
   decisions: () => get<Decision[]>("/decisions"),
   candles: (symbol: string, timeframe = "15m", at?:string) =>
     get<Candle[]>(`/candles/${symbol}?timeframe=${timeframe}${at?`&at=${encodeURIComponent(at)}`:""}`),
-  historicalCandles: (symbol:string,timeframe="15m",options:{limit?:number;start?:string;end?:string;at?:string}={}) => {
-    const params=new URLSearchParams({timeframe,limit:String(options.limit??500),db_only:"true"});
+  historicalCandles: (symbol:string,timeframe="15m",options:{limit?:number;start?:string;end?:string;at?:string;signal?:AbortSignal}={}) => {
+    const params=new URLSearchParams({timeframe,limit:String(options.limit??300),db_only:"true"});
     if(options.start)params.set("start",options.start);if(options.end)params.set("end",options.end);if(options.at)params.set("at",options.at);
-    return get<Candle[]>(`/candles/${symbol}?${params.toString()}`);
+    return get<Candle[]>(`/candles/${symbol}?${params.toString()}`,options.signal);
   },
   dataHealth: () => get<DataHealth>("/data-health"),
   telegramStatus: () => get<{enabled:boolean;configured:boolean;signal_alerts:boolean}>("/telegram/status"),
@@ -36,7 +36,7 @@ export const api = {
   news: () => get<NewsItem[]>("/news"),
   newsArchive: (query="") => get<NewsItem[]>(`/news/archive${query?`?${query}`:""}`),
   symbolNews: (symbol:string) => get<NewsItem[]>(`/news/${symbol}`),
-  newsReactions: (symbol:string) => get<NewsReaction[]>(`/news/reactions/${symbol}`),
+  newsReactions: (symbol:string,signal?:AbortSignal) => get<NewsReaction[]>(`/news/reactions/${symbol}`,signal),
   eventStudy: () => get<EventStudy[]>("/news/event-study"),
   newsHealth: () => get<NewsHealth>("/news/health"),
   newsMetrics: () => get<NewsMetrics>("/news/metrics"),
@@ -45,13 +45,13 @@ export const api = {
   reactionQueueStatus: () => get<ReactionQueueStatus>("/news/reactions/status"),
   recentReactions: () => get<NewsReaction[]>("/news/reactions/recent"),
   collectionActivity: () => get<CollectionActivity[]>("/data-collection/activity"),
-  marketHistory: (symbol:string) => get<MarketSnapshot[]>(`/market-history/${symbol}`),
+  marketHistory: (symbol:string,signal?:AbortSignal) => get<MarketSnapshot[]>(`/market-history/${symbol}`,signal),
   marketTrend: (symbol:string) => get<Array<{timestamp:string;price:number;trend?:string;structure?:string;score?:number;analysis_mode?:"LIVE"|"ANALYSIS_ONLY"}>>(`/market-history/${symbol}/trend`),
   marketSnapshot: (symbol:string,at:string) => get<MarketSnapshot>(`/market-history/${symbol}/snapshot?at=${encodeURIComponent(at)}`),
-  marketSnapshotDetail: (symbol:string,at:string) => get<SnapshotDetail>(`/market-history/${symbol}/snapshot-detail?at=${encodeURIComponent(at)}`),
-  marketNews: (symbol:string) => get<NewsItem[]>(`/market-history/${symbol}/news`),
+  marketSnapshotDetail: (symbol:string,at:string,signal?:AbortSignal) => get<SnapshotDetail>(`/market-history/${symbol}/snapshot-detail?at=${encodeURIComponent(at)}`,signal),
+  marketNews: (symbol:string,signal?:AbortSignal) => get<NewsItem[]>(`/market-history/${symbol}/news`,signal),
   linkedNewsSymbols: () => get<MarketMemorySymbol[]>("/news/linked-symbols"),
-  marketMemorySymbols: () => get<MarketMemorySymbol[]>("/market-memory/symbols"),
+  marketMemorySymbols: (signal?:AbortSignal) => get<MarketMemorySymbol[]>("/market-memory/symbols",signal),
   marketMemoryHealth: () => get<MarketMemoryHealth>("/market-memory/health"),
   backfillStatus: () => get<BackfillStatus>("/backfill/status"),
   refreshNews: async () => {const r=await fetch(`${API}/news/refresh`,{method:"POST"});if(!r.ok)throw new Error("Haber yenilenemedi");return r.json()},

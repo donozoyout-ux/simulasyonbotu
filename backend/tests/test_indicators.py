@@ -1,5 +1,5 @@
 from decimal import Decimal
-from app.analysis.indicators import atr, bollinger, ema, indicator_snapshot, macd, rate_of_change, rsi, vwap
+from app.analysis.indicators import atr, bollinger, ema, indicator_series, indicator_snapshot, macd, rate_of_change, rsi, vwap
 from app.market_data.provider import CandleData
 from datetime import datetime, timedelta, timezone
 
@@ -40,4 +40,14 @@ def test_extended_indicator_snapshot_has_finite_backend_values():
 
 def test_vwap_rejects_zero_volume():
     assert vwap(d([1]),d([1]),d([1]),d([0])) is None
+
+
+def test_linear_indicator_series_matches_every_prefix_snapshot():
+    start=datetime(2026,1,1,tzinfo=timezone.utc)
+    candles=[CandleData(start+timedelta(minutes=15*i),Decimal(100+i%17),Decimal(102+i%17),
+        Decimal(99+i%17),Decimal(101+i%17),Decimal(1000+i),True) for i in range(260)]
+    series=indicator_series(candles)
+    for index in (0, 13, 14, 19, 25, 33, 49, 199, 259):
+        expected=indicator_snapshot(candles[:index+1])
+        assert {key:value for key,value in series[index].items() if key!="timestamp"} == expected
 
