@@ -151,10 +151,17 @@ def test_news_reaction_calculates_next_open_and_returns(db):
     for index in range(1, 7):
         add_candle(db, "ASELS", "1d", base+timedelta(days=index), 100+index)
         add_candle(db, "XU100", "1d", base+timedelta(days=index), 10000+index*10)
-    db.commit(); MarketMemoryService(db, config()).evaluate_reactions()
+    db.commit(); statements=[]
+    def before_cursor_execute(_conn,_cursor,statement,_parameters,_context,_executemany):
+        if statement.lstrip().upper().startswith("SELECT") and "FROM candles" in statement:
+            statements.append(statement)
+    event.listen(db.get_bind(),"before_cursor_execute",before_cursor_execute)
+    try: MarketMemoryService(db, config()).evaluate_reactions()
+    finally: event.remove(db.get_bind(),"before_cursor_execute",before_cursor_execute)
     reaction = db.scalar(select(NewsMarketReaction).where(NewsMarketReaction.news_id == item.id))
     assert reaction.next_open == 101 and reaction.return_15m == 1 and reaction.return_5d == 5
     assert reaction.abnormal_return_1d is not None and reaction.status == "COMPLETE"
+    assert len(statements)==6 and all("LIMIT" in statement.upper() for statement in statements)
 
 
 def test_event_study_groups_category(db):

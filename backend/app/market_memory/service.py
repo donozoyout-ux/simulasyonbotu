@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from statistics import median
 from types import SimpleNamespace
@@ -311,18 +311,26 @@ class MarketMemoryService:
         updated = 0
         for reaction, news in rows:
           try:
-            intraday = self.db.scalars(select(Candle).where(Candle.symbol == news.symbol, Candle.timeframe == "15m")
-                .order_by(Candle.timestamp)).all()
-            daily = self.db.scalars(select(Candle).where(Candle.symbol == news.symbol, Candle.timeframe == "1d")
-                .order_by(Candle.timestamp)).all()
             published_at = _utc(news.published_at)
             session = BistMarketSession.from_config(self.config)
             local_news = published_at.astimezone(session.tz)
-            before = [row for row in intraday if _utc(row.timestamp) <= published_at]
-            after = [row for row in intraday if _utc(row.timestamp) > published_at]
-            daily_before = [row for row in daily if _utc(row.timestamp).astimezone(session.tz).date() < local_news.date()
-                or (_utc(row.timestamp).astimezone(session.tz).date() == local_news.date() and local_news.time() >= session.close_time)]
-            daily_after = [row for row in daily if _utc(row.timestamp).astimezone(session.tz).date() > local_news.date()]
+            intraday_columns=(Candle.timestamp,Candle.open,Candle.close,Candle.volume)
+            before=list(reversed(self.db.execute(select(*intraday_columns).where(
+                Candle.symbol==news.symbol,Candle.timeframe=="15m",Candle.timestamp<=published_at
+            ).order_by(desc(Candle.timestamp)).limit(20)).all()))
+            after=self.db.execute(select(*intraday_columns).where(
+                Candle.symbol==news.symbol,Candle.timeframe=="15m",Candle.timestamp>published_at
+            ).order_by(Candle.timestamp).limit(4)).all()
+            day_start=datetime.combine(local_news.date(),time.min,session.tz).astimezone(timezone.utc)
+            next_day_start=day_start+timedelta(days=1)
+            daily_before_cutoff=next_day_start if local_news.time()>=session.close_time else day_start
+            daily_columns=(Candle.timestamp,Candle.close)
+            daily_before=self.db.execute(select(*daily_columns).where(
+                Candle.symbol==news.symbol,Candle.timeframe=="1d",Candle.timestamp<daily_before_cutoff
+            ).order_by(desc(Candle.timestamp)).limit(1)).all()
+            daily_after=self.db.execute(select(*daily_columns).where(
+                Candle.symbol==news.symbol,Candle.timeframe=="1d",Candle.timestamp>=next_day_start
+            ).order_by(Candle.timestamp).limit(5)).all()
             reaction.price_before = before[-1].close if before else None
             reaction.previous_close = daily_before[-1].close if daily_before else reaction.price_before
             reaction.next_open = after[0].open if after else None
@@ -335,11 +343,11 @@ class MarketMemoryService:
             prior_volume = sum((row.volume for row in before[-20:]), Decimal(0)) / len(before[-20:]) if before else None
             reaction.volume_change = _pct(after[0].volume, prior_volume) if after and prior_volume else None
             reaction.rvol_after = after[0].volume / prior_volume if after and prior_volume else None
-            xu = self.db.scalars(select(Candle).where(Candle.symbol == "XU100", Candle.timeframe == "1d")
-                .order_by(Candle.timestamp)).all()
-            xu_before = [row for row in xu if _utc(row.timestamp) <= published_at]
-            xu_after = [row for row in xu if _utc(row.timestamp) > published_at]
-            reaction.xu100_return_1d = _pct(xu_after[0].close, xu_before[-1].close) if xu_before and xu_after else None
+            xu_before=self.db.execute(select(Candle.close).where(Candle.symbol=="XU100",Candle.timeframe=="1d",
+                Candle.timestamp<=published_at).order_by(desc(Candle.timestamp)).limit(1)).first()
+            xu_after=self.db.execute(select(Candle.close).where(Candle.symbol=="XU100",Candle.timeframe=="1d",
+                Candle.timestamp>published_at).order_by(Candle.timestamp).limit(1)).first()
+            reaction.xu100_return_1d = _pct(xu_after.close, xu_before.close) if xu_before and xu_after else None
             reaction.abnormal_return_1d = (reaction.return_1d - reaction.xu100_return_1d
                 if reaction.return_1d is not None and reaction.xu100_return_1d is not None else None)
             reaction.pre_return_15m = _pct(before[-1].close, before[-2].close) if len(before) >= 2 else None
