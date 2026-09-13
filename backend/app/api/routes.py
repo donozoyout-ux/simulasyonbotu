@@ -11,7 +11,7 @@ from app.config.settings import get_settings
 from app.ai.groq_advisor import ai_health
 from app.analysis.indicators import indicator_series
 from app.db.session import get_db
-from app.models import Analysis, Candle, DailySummary, DecisionLog, ForwardRun, Portfolio, PortfolioSnapshot, Position, ScanRun, Setting, Trade, WatchlistItem
+from app.models import Analysis, Candle, DailySummary, DecisionLog, ForwardRun, Portfolio, PortfolioSnapshot, Position, ScanRun, Setting, SymbolHealth, Trade, WatchlistItem
 from app.market_data.market_session import BistMarketSession
 from app.portfolio.portfolio_manager import ensure_portfolio, portfolio_summary, take_snapshot
 from app.schemas.common import PaperTradingControl, PortfolioReset, SettingsUpdate
@@ -229,6 +229,13 @@ def scanner_status(db: Session = Depends(get_db)):
     last_off_hours=next((item for item in scans if item.analysis_mode=="ANALYSIS_ONLY"),None)
     next_off_hours=(last_off_hours.started_at+timedelta(minutes=config.off_hours_scan_interval_minutes)
         if last_off_hours and last_off_hours.started_at else now) if config.off_hours_scan_enabled and not market_open else None
+    last_funnel=last.funnel or {} if last else {}
+    score_stats={"highest":last_funnel.get("score_highest",max((row.score for row in latest_rows),default=0)),
+        "average":last_funnel.get("score_average",round(sum(row.score for row in latest_rows)/len(latest_rows),2) if latest_rows else 0),
+        "above_watchlist":last_funnel.get("score_above_watchlist",sum(row.score>=config.watchlist_score for row in latest_rows)),
+        "above_entry":last_funnel.get("score_above_entry",sum(row.score>=config.entry_score for row in latest_rows))}
+    health_rows=db.scalars(select(SymbolHealth).where(SymbolHealth.consecutive_failures>0)
+        .order_by(desc(SymbolHealth.last_failure_at)).limit(20)).all()
     return dump({
         "status":status,
         "market_status":"MARKET OPEN" if market_open else "MARKET CLOSED",
@@ -246,6 +253,12 @@ def scanner_status(db: Session = Depends(get_db)):
         "watchlist_count":watch_count,
         "latest_analysis_symbols":latest_symbols,
         "analysis_rows":analyses_count,
+        "score_stats":score_stats,
+        "symbol_health":[{"symbol":row.symbol,"type":row.last_error_type or "UNKNOWN",
+            "status":"UNIVERSE_DATA_UNAVAILABLE" if row.last_error_type in {"SYMBOL_NOT_FOUND","INSUFFICIENT_HISTORY"} else "PROVIDER_ERROR",
+            "message":row.last_error_message or "","error":row.last_error_message or "",
+            "consecutive_failures":row.consecutive_failures,"retry_at":row.quarantined_until,
+            "last_failure_at":row.last_failure_at} for row in health_rows],
         "last_scan":None if last is None else {
             "started_at":last.started_at,"completed_at":last.completed_at,"duration_ms":last.duration_ms,
             "total_symbols":last.total_symbols,"valid_symbols":last.valid_symbols,"failed_symbols":last.failed_symbols,

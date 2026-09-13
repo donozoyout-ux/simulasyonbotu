@@ -30,6 +30,10 @@ services:
         value: "30"
       - key: OFF_HOURS_SCAN_SYMBOL_LIMIT
         value: "30"
+      - key: SYMBOL_QUARANTINE_FAILURE_THRESHOLD
+        value: "3"
+      - key: SYMBOL_QUARANTINE_MINUTES
+        value: "60"
       - key: SCANNER_SYMBOL_LIMIT
         value: "30"
       - key: MANUAL_SCAN_SYMBOL_LIMIT

@@ -1,10 +1,11 @@
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from time import perf_counter
 
 from sqlalchemy import func,select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.analysis.pipeline import PipelineResult, analyze_frames
@@ -18,7 +19,7 @@ from app.market_data.eodhd_provider import EodhdHistoricalProvider
 from app.market_data.market_session import BistMarketSession
 from app.market_data.twelvedata_provider import TwelveDataProvider
 from app.market_data.hybrid_provider import HybridMarketDataProvider
-from app.models import Analysis,Candle,DecisionLog,MarketStateSnapshot,NewsItem,NewsMarketReaction,Order,Position,ScanRun,Setting,Symbol,WatchlistItem
+from app.models import Analysis,Candle,DecisionLog,MarketStateSnapshot,NewsItem,NewsMarketReaction,Order,Position,ScanRun,Setting,Symbol,SymbolHealth,WatchlistItem
 from app.news.sentiment import GroqNewsAnalyzer
 from app.portfolio.paper_broker import DuplicateOrderError,PaperBroker
 from app.portfolio.portfolio_manager import ensure_portfolio,portfolio_summary,take_snapshot
@@ -37,6 +38,18 @@ _SCAN_LOCK=threading.Lock()
 
 def safe_provider_error(exc: Exception) -> str:
     return redact_secret(str(exc))[:500] or type(exc).__name__
+
+
+def classify_provider_error(exc: Exception) -> str:
+    message=f"{type(exc).__name__} {exc}".lower()
+    if "429" in message or "rate limit" in message or "too many requests" in message:return "PROVIDER_RATE_LIMIT"
+    if "timeout" in message or "timed out" in message:return "PROVIDER_TIMEOUT"
+    if "404" in message or "not found" in message:return "SYMBOL_NOT_FOUND"
+    if "yetersiz" in message or "insufficient" in message or "history" in message:return "INSUFFICIENT_HISTORY"
+    if "stale" in message:return "STALE_DATA"
+    if "invalid ohlc" in message or "ohlc" in message:return "INVALID_OHLC"
+    if "zero volume" in message or "sıfır hacim" in message:return "ZERO_VOLUME"
+    return "UNKNOWN"
 
 
 def json_safe(value):
@@ -84,6 +97,37 @@ class BistScanner:
         self.news_advisor=GroqNewsAnalyzer(config)
         self._benchmark_daily=None
         self.forward_run=None
+
+    @staticmethod
+    def _as_utc(value:datetime|None)->datetime|None:
+        if value is None:return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+    def _quarantined_symbols(self,at:datetime)->set[str]:
+        rows=self.db.scalars(select(SymbolHealth).where(SymbolHealth.quarantined_until.is_not(None))).all()
+        return {row.symbol for row in rows if self._as_utc(row.quarantined_until)>at.astimezone(timezone.utc)}
+
+    def _record_symbol_success(self,symbol:str,at:datetime)->None:
+        health=self.db.get(SymbolHealth,symbol)
+        if health is None:
+            health=SymbolHealth(symbol=symbol);self.db.add(health)
+        health.consecutive_failures=0;health.last_success_at=at;health.quarantined_until=None
+        health.last_error_type=None;health.last_error_message=None
+        self.db.commit()
+
+    def _record_symbol_failure(self,symbol:str,exc:Exception,at:datetime)->dict:
+        error_type=classify_provider_error(exc);message=safe_provider_error(exc)
+        health=self.db.get(SymbolHealth,symbol)
+        if health is None:
+            health=SymbolHealth(symbol=symbol,consecutive_failures=0);self.db.add(health)
+        health.consecutive_failures=(health.consecutive_failures or 0)+1
+        health.last_failure_at=at;health.last_error_type=error_type;health.last_error_message=message
+        if health.consecutive_failures>=self.config.symbol_quarantine_failure_threshold:
+            health.quarantined_until=at+timedelta(minutes=self.config.symbol_quarantine_minutes)
+        self.db.commit()
+        return {"symbol":symbol,"type":error_type,"status":"UNIVERSE_DATA_UNAVAILABLE" if error_type in {"SYMBOL_NOT_FOUND","INSUFFICIENT_HISTORY"} else "PROVIDER_ERROR",
+            "message":message,"error":message,"consecutive_failures":health.consecutive_failures,
+            "retry_at":health.quarantined_until.isoformat() if health.quarantined_until else None}
 
     def _log(self,category,decision,reason,symbol=None,score=None,details=None):
         run=self.forward_run
@@ -256,7 +300,13 @@ class BistScanner:
         return {"status":"positions_checked","timeframe":timeframe,"open_before":len(before),"open_after":len(after)}
 
     def _try_entries(self,items,funnel:dict,allow_entries:bool=True,analysis_mode:str|None=None,market_open:bool|None=None)->None:
-        portfolio=ensure_portfolio(self.db,self.config.initial_balance)
+        candidates=[item for item in sorted(items,key=lambda pair:pair[0].score,reverse=True) if item[0].decision=="POSSIBLE_ENTRY"]
+        funnel["entry_candidates"]=len(candidates)
+        funnel.setdefault("entry_eligible",0);funnel.setdefault("entry_blocked_symbol_data",0);funnel.setdefault("entry_blocked_global",0)
+        try:portfolio=ensure_portfolio(self.db,self.config.initial_balance)
+        except Exception:
+            funnel["entry_blocked_global"]+=len(candidates)
+            return
         run=self.forward_run
         broker=PaperBroker(self.db,self.runtime["commission_rate"],self.runtime["slippage_rate"],self.config.intrabar_policy,
             run.run_id if run else None,run.strategy_version if run else None,run.strategy_config_hash if run else None)
@@ -266,13 +316,28 @@ class BistScanner:
         config_matches=bool(run and run.strategy_config_hash==strategy_config_snapshot(self.analysis_config)["sha256"])
         entries_enabled=allow_entries and analysis_mode=="LIVE" and self.config.operation_mode=="LIVE_PAPER" and self.config.data_mode=="live" and self.provider.name!="mock" and market_open and bool(run and not run.paused) and config_matches
         if not entries_enabled:
+            funnel["entry_blocked_global"]+=len(candidates)
             self._log("ENTRY_GATE","NO_NEW_ENTRY","Entry gate closed: provider/data/session/pause/config safety condition",
                 details={"market_open":market_open,"paused":bool(run and run.paused),"provider":self.provider.name,
                     "mode":self.config.operation_mode,"analysis_mode":analysis_mode,"config_match":config_matches})
-        for analysis,result,assessment in sorted(items,key=lambda pair:pair[0].score,reverse=True):
-            if analysis.decision!="POSSIBLE_ENTRY":continue
+        for analysis,result,assessment in candidates:
             if not entries_enabled:continue
+            result_funnel=getattr(result,"funnel",{}) or {}
+            details=getattr(analysis,"details",{}) or {}
+            assessment_status=getattr(assessment,"status","TRADABLE" if getattr(assessment,"affordable",False) else "UNAFFORDABLE")
+            rr=details.get("risk_reward",self.runtime["min_rr"])
+            symbol_data_valid=(bool(getattr(analysis,"data_valid",True)) and bool(result_funnel.get("data_valid",True))
+                and bool(result_funnel.get("sufficient_history",True)) and bool(details.get("analysis_complete",True))
+                and assessment_status=="TRADABLE" and analysis.score>=self.runtime["entry_score"]
+                and Decimal(str(rr or 0))>=self.runtime["min_rr"])
+            if not symbol_data_valid:
+                funnel["entry_blocked_symbol_data"]+=1
+                self._log("ENTRY_GATE","SYMBOL_DATA_BLOCKED","Only this symbol failed entry eligibility",analysis.symbol,analysis.score,
+                    {"data_valid":getattr(analysis,"data_valid",True),"sufficient_history":result_funnel.get("sufficient_history"),
+                     "analysis_complete":details.get("analysis_complete"),"universe_status":assessment_status,"rr":rr})
+                continue
             if not assessment.affordable:
+                funnel["entry_blocked_symbol_data"]+=1
                 self._log("RISK","UNAFFORDABLE",assessment.reason,analysis.symbol,analysis.score);continue
             key=f"{run.run_id}:{analysis.symbol}:{analysis.setup}:{result.signal_candle_time.isoformat()}"
             if self.db.scalar(select(Order.id).where(Order.idempotency_key==key)):
@@ -280,12 +345,19 @@ class BistScanner:
             if self.db.scalar(select(Position.id).where(Position.symbol==analysis.symbol,Position.status=="OPEN")):
                 self._log("ORDER","DUPLICATE_BLOCKED","Açık pozisyon zaten var",analysis.symbol,analysis.score);continue
             setup=analysis.details["setup"];summary=portfolio_summary(self.db,self.config.initial_balance)
-            risk=size_position(summary["portfolio_value"],summary["cash_balance"],Decimal(str(setup["entry_area"])),Decimal(str(setup["invalidation_level"])),
-                Decimal(str(setup["target"])),self.runtime["risk_per_trade_pct"],self.runtime["max_position_size_pct"],
-                self.runtime["minimum_cash_reserve_pct"],summary["open_positions"],self.runtime["max_open_positions"],self.runtime["min_rr"],
-                Decimal(str(analysis.details["volatility"]["atr"])),self.config.minimum_stop_atr_pct,self.config.maximum_stop_atr_pct)
-            if not risk.approved:self._log("RISK","NO_TRADE",risk.reason,analysis.symbol,analysis.score);continue
-            funnel["risk_pass"]+=1
+            try:
+                risk=size_position(summary["portfolio_value"],summary["cash_balance"],Decimal(str(setup["entry_area"])),Decimal(str(setup["invalidation_level"])),
+                    Decimal(str(setup["target"])),self.runtime["risk_per_trade_pct"],self.runtime["max_position_size_pct"],
+                    self.runtime["minimum_cash_reserve_pct"],summary["open_positions"],self.runtime["max_open_positions"],self.runtime["min_rr"],
+                    Decimal(str(analysis.details["volatility"]["atr"])),self.config.minimum_stop_atr_pct,self.config.maximum_stop_atr_pct)
+            except Exception as exc:
+                funnel["entry_blocked_global"]+=len(candidates)-funnel["entry_eligible"]-funnel["entry_blocked_symbol_data"]
+                self._log("ENTRY_GATE","GLOBAL_BLOCKED",f"Risk engine unavailable: {type(exc).__name__}")
+                return
+            if not risk.approved:
+                funnel["entry_blocked_symbol_data"]+=1
+                self._log("RISK","NO_TRADE",risk.reason,analysis.symbol,analysis.score);continue
+            funnel["risk_pass"]+=1;funnel["entry_eligible"]+=1
             try:
                 position=broker.buy(portfolio,analysis.symbol,risk.quantity,analysis.price,Decimal(str(setup["invalidation_level"])),Decimal(str(setup["target"])),
                     analysis.setup,analysis.score,analysis.reason,key,result.signal_candle_time)
@@ -302,8 +374,13 @@ class BistScanner:
         market_open=self.market_open if self.market_open is not None else BistMarketSession.from_config(self.config).is_open(started)
         analysis_at=started
         slot_minutes=self.config.off_hours_scan_interval_minutes if self.analysis_mode=="ANALYSIS_ONLY" else 15
-        symbols=self.universe.candidates(max_symbols,started if self.analysis_mode=="ANALYSIS_ONLY" else closed_candle_timestamp,slot_minutes)
-        funnel={"total":len(symbols),"data_valid":0,"sufficient_history":0,"htf_bullish":0,"valid_setup":0,"score_pass":0,"rr_pass":0,"risk_pass":0,"buy":0}
+        quarantined=self._quarantined_symbols(started)
+        symbols=self.universe.candidates(max_symbols,started if self.analysis_mode=="ANALYSIS_ONLY" else closed_candle_timestamp,
+            slot_minutes,excluded=quarantined)
+        funnel={"total":len(symbols),"symbols_requested":len(symbols),"symbols_analyzed":0,"symbols_failed":0,
+            "data_valid":0,"sufficient_history":0,"htf_bullish":0,"valid_setup":0,"score_pass":0,"rr_pass":0,
+            "entry_candidates":0,"entry_eligible":0,"entry_blocked_symbol_data":0,"entry_blocked_global":0,
+            "risk_pass":0,"buy":0,"quarantined_skipped":len(quarantined)}
         run=ScanRun(started_at=started,provider=self.provider.name,data_mode=self.config.data_mode,total_symbols=len(symbols),valid_symbols=0,failed_symbols=0,stale_symbols=0,funnel={},errors=[],
             run_id=self.forward_run.run_id,timeframe="15m",closed_candle_timestamp=closed_candle_timestamp,
             analysis_mode=self.analysis_mode,market_open=market_open)
@@ -313,15 +390,28 @@ class BistScanner:
         for symbol in symbols:
             try:
                 analysis,result,assessment=self.analyze_symbol(symbol,analysis_at);items.append((analysis,result,assessment))
+                self._record_symbol_success(symbol,started)
                 for key in ("data_valid","sufficient_history","htf_bullish","valid_setup","score_pass","rr_pass"):funnel[key]+=int(result.funnel[key])
                 if not result.funnel["data_valid"]:run.stale_symbols+=1
+            except SQLAlchemyError:
+                # Database/transaction failures are global; never misclassify
+                # them as one symbol's provider health problem.
+                self.db.rollback()
+                raise
             except Exception as exc:
                 # A failed flush/commit poisons the SQLAlchemy transaction until
                 # rollback. One bad symbol must not prevent the remaining scan.
                 self.db.rollback()
-                error=safe_provider_error(exc)
-                errors.append({"symbol":symbol,"error":error});logger.warning("symbol_failed symbol=%s error=%s",symbol,error)
-        self._try_entries(items,funnel,allow_entries=not errors,analysis_mode=self.analysis_mode,market_open=market_open)
+                error=self._record_symbol_failure(symbol,exc,started)
+                errors.append(error);logger.warning("symbol_failed symbol=%s type=%s error=%s",symbol,error["type"],error["message"])
+        funnel["symbols_analyzed"]=len(items);funnel["symbols_failed"]=len(errors)
+        scores=[item[0].score for item in items]
+        funnel.update({"score_highest":max(scores,default=0),"score_average":round(sum(scores)/len(scores),2) if scores else 0,
+            "score_above_watchlist":sum(score>=self.runtime["watchlist_score"] for score in scores),
+            "score_above_entry":sum(score>=self.runtime["entry_score"] for score in scores)})
+        # Per-symbol provider failures are isolated. Only explicit global safety
+        # gates inside _try_entries may block otherwise valid symbols.
+        self._try_entries(items,funnel,allow_entries=True,analysis_mode=self.analysis_mode,market_open=market_open)
         take_snapshot(self.db,self.config.initial_balance,self.forward_run.run_id)
         upsert_daily_summary(self.db,self.config,self.forward_run)
         run.completed_at=datetime.now(timezone.utc);run.duration_ms=round((perf_counter()-clock)*1000);run.valid_symbols=len(items);run.failed_symbols=len(errors);run.funnel=funnel;run.errors=errors
@@ -333,6 +423,8 @@ class BistScanner:
         return {"status":"completed","analyzed":len(items),"errors":errors,"funnel":funnel,"duration_ms":run.duration_ms,
             "analysis_mode":self.analysis_mode,"market_open":market_open,"entries_enabled":self.analysis_mode=="LIVE" and market_open,
             "source_candle_timestamp":run.source_candle_timestamp,
+            "score_stats":{"highest":funnel["score_highest"],"average":funnel["score_average"],
+                "above_watchlist":funnel["score_above_watchlist"],"above_entry":funnel["score_above_entry"]},
             "results":[{"symbol":a.symbol,"score":a.score,"decision":a.decision,"source":a.data_source,
                 "universe_status":assessment.status} for a,_,assessment in sorted(items,key=lambda pair:pair[0].score,reverse=True)]}
 

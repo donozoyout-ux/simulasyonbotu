@@ -1140,6 +1140,7 @@ function ScannerCenter({
   onSelect: (s: string) => void;
 }) {
   const last = status?.last_scan;
+  const providerErrors = status?.symbol_health?.length ? status.symbol_health : (last?.errors ?? []);
   return (
     <div className="scanner-center">
       <article className="panel">
@@ -1166,9 +1167,34 @@ function ScannerCenter({
             <small>{status?.auto_worker ? "Auto worker aktif" : "Auto worker kapalı"}</small>
           </div>
           <div>
-            <span>Son Tur</span>
+            <span>Taranan</span>
             <b>{last?.total_symbols ?? 0}</b>
-            <small>{last?.valid_symbols ?? 0} geçerli • {last?.failed_symbols ?? 0} hatalı • {last?.stale_symbols ?? 0} stale</small>
+            <small>Son batch sembol sayısı</small>
+          </div>
+          <div>
+            <span>Başarılı</span>
+            <b>{last?.valid_symbols ?? 0}</b>
+            <small>Analizi tamamlanan</small>
+          </div>
+          <div>
+            <span>Hatalı</span>
+            <b>{last?.failed_symbols ?? 0}</b>
+            <small>{last?.stale_symbols ?? 0} stale</small>
+          </div>
+          <div>
+            <span>En Yüksek Skor</span>
+            <b>{status?.score_stats?.highest ?? 0}</b>
+            <small>Ortalama {status?.score_stats?.average ?? 0}</small>
+          </div>
+          <div>
+            <span>70+ Aday</span>
+            <b>{status?.score_stats?.above_watchlist ?? 0}</b>
+            <small>Watchlist eşiği 70</small>
+          </div>
+          <div>
+            <span>82+ Aday</span>
+            <b>{status?.score_stats?.above_entry ?? 0}</b>
+            <small>Entry eşiği 82</small>
           </div>
           <div>
             <span>Takip Listesi</span>
@@ -1225,14 +1251,20 @@ function ScannerCenter({
             <span><b>PİYASA KAPALI — ANALİZ MODU.</b> Son kapanmış piyasa verileri analiz edilir; yeni emir oluşturulmaz.</span>
           </div>
         ) : null}
-        {last?.errors?.length ? (
+        {providerErrors.length ? (
           <div className="health-errors" style={{ marginTop: "1rem" }}>
-            <b>Son tarama hataları</b>
-            {last.errors.slice(0, 8).map((item) => (
-              <p key={item.symbol + "-" + item.error}>
-                <b>{item.symbol}</b> {item.error}
-              </p>
-            ))}
+            <b>Provider hataları</b>
+            <div style={{overflowX:"auto",marginTop:"0.6rem"}}>
+              <table>
+                <thead><tr><th>Symbol</th><th>Error Type</th><th>Message</th><th>Consecutive Failures</th><th>Retry At</th></tr></thead>
+                <tbody>{providerErrors.slice(0,20).map((item)=>(
+                  <tr key={item.symbol+"-"+item.error}>
+                    <td><b>{item.symbol}</b></td><td>{item.type||"UNKNOWN"}</td><td>{item.message||item.error}</td>
+                    <td>{item.consecutive_failures??1}</td><td>{item.retry_at?fmtDate(item.retry_at):"—"}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
           </div>
         ) : null}
       </article>

@@ -220,6 +220,17 @@ class ScanRun(Base):
     source_candle_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class SymbolHealth(Base):
+    __tablename__ = "symbol_health"
+    symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    quarantined_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_error_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class ForwardRun(Base):
     __tablename__ = "forward_runs"
     run_id: Mapped[str] = mapped_column(String(32), primary_key=True)

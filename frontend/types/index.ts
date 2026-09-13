@@ -216,6 +216,13 @@ export type ScannerStatus = {
   watchlist_count: number;
   latest_analysis_symbols: number;
   analysis_rows: number;
+  score_stats: {
+    highest: number;
+    average: number;
+    above_watchlist: number;
+    above_entry: number;
+  };
+  symbol_health: Array<{symbol:string;type:string;status:string;message:string;error:string;consecutive_failures:number;retry_at?:string;last_failure_at?:string}>;
   last_scan?: {
     started_at: string;
     completed_at?: string;
@@ -227,7 +234,7 @@ export type ScannerStatus = {
     watchlist_count: number;
     signals: number;
     entries: number;
-    errors: Array<{symbol:string;error:string}>;
+    errors: Array<{symbol:string;type?:string;status?:string;message?:string;error:string;consecutive_failures?:number;retry_at?:string}>;
     funnel: Record<string,number>;
     analysis_mode:string;
     market_open:boolean;

@@ -53,6 +53,8 @@ class AppSettings(BaseSettings):
     off_hours_scan_enabled: bool = True
     off_hours_scan_interval_minutes: int = 30
     off_hours_scan_symbol_limit: int = 30
+    symbol_quarantine_failure_threshold: int = 3
+    symbol_quarantine_minutes: int = 60
     ai_enabled: bool = True
     ai_provider: str = "groq"
     groq_api_key: SecretStr | None = None

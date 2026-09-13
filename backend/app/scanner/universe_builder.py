@@ -38,8 +38,9 @@ class UniverseBuilder:
         ordered = small_mid + large_caps + extras
         return ordered or discovered
 
-    def candidates(self, max_symbols: int | None = None, at: datetime | None = None, slot_minutes: int = 15) -> list[str]:
-        symbols = self._ordered_symbols()
+    def candidates(self, max_symbols: int | None = None, at: datetime | None = None, slot_minutes: int = 15,
+                   excluded: set[str] | None = None) -> list[str]:
+        symbols = [symbol for symbol in self._ordered_symbols() if symbol not in (excluded or set())]
         if not max_symbols or max_symbols >= len(symbols):
             return symbols
 
