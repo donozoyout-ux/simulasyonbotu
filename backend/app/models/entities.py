@@ -302,6 +302,27 @@ class NewsItem(Base):
     overnight_news: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     telegram_eligible: Mapped[bool] = mapped_column(Boolean, default=True)
     ingestion_mode: Mapped[str] = mapped_column(String(16), default="LIVE")
+    symbol_match_method: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    symbol_match_confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unmatched_reason: Mapped[str | None] = mapped_column(String(48), nullable=True, index=True)
+    detected_company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    best_candidate: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    best_candidate_confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class NewsCompanyLink(Base):
+    __tablename__ = "news_company_links"
+    __table_args__ = (
+        UniqueConstraint("news_id", "symbol", name="uq_news_company_link_identity"),
+        Index("ix_news_company_link_news_primary", "news_id", "is_primary"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("news_items.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    confidence: Mapped[int] = mapped_column(Integer)
+    match_method: Mapped[str] = mapped_column(String(32))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class NewsSourceState(Base):

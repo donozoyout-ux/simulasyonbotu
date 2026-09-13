@@ -9,6 +9,7 @@ from app.db.session import SessionLocal
 from app.market_data.market_session import BistMarketSession
 from app.services.forward_worker import ForwardWorker
 from app.news.service import NewsService
+from app.news.reconciliation import NewsSymbolReconciliationService
 from app.market_memory.backfill import BackfillService
 from app.market_memory.service import MarketMemoryService
 from app.market_memory.brief import MorningBriefService
@@ -69,6 +70,12 @@ class EmbeddedWorker:
                 except Exception:
                     db.rollback(); logger.exception("backfill_failed")
                     maintenance["backfill"] = {"status": "ERROR"}
+            if self.config.news_enabled:
+                try:
+                    maintenance["news_reconciliation"] = NewsSymbolReconciliationService(db, self.config).run()
+                except Exception:
+                    db.rollback(); logger.exception("news_reconciliation_failed")
+                    maintenance["news_reconciliation"] = {"status": "ERROR"}
             if self.config.market_memory_enabled:
                 try:
                     maintenance["reactions"] = MarketMemoryService(db, self.config).evaluate_reactions(

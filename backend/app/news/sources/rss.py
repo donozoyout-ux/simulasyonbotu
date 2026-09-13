@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
 
-from app.news.models import NewsRecord, infer_symbol
+from app.news.company_aliases import resolve_company_symbols
+from app.news.models import NewsRecord
 from app.news.security import validate_source_url
 from app.news.sources.base import NewsSource
 
@@ -27,7 +28,10 @@ def parse_rss(payload: str, source: str = "AA", base_url: str = PUBLIC_RSS_URL) 
             published = datetime.now(timezone.utc)
         source_id = (item.findtext("guid") or url).strip()
         content=item.findtext("description") or ""
-        records.append(NewsRecord(source, source_id[:200], title[:500], content, url, published, symbol=infer_symbol(title,content)))
+        categories=[(node.text or "").strip() for node in item.findall("category") if (node.text or "").strip()]
+        metadata={"guid":source_id[:200],"categories":categories,"author":(item.findtext("author") or "").strip()}
+        records.append(NewsRecord(source, source_id[:200], title[:500], content, url, published,
+            source_metadata=metadata))
     return records
 
 
@@ -36,7 +40,8 @@ class RssSource(NewsSource):
 
     def fetch(self) -> list[NewsRecord]:
         # General economy feeds are filtered locally; unrelated stories never consume Groq quota.
-        return [record for record in parse_rss(self.fetch_text(PUBLIC_RSS_URL)) if record.symbol]
+        return [record for record in parse_rss(self.fetch_text(PUBLIC_RSS_URL))
+            if resolve_company_symbols(record.title,record.content).primary_symbol]
 
 
 class GenericRssSource(NewsSource):

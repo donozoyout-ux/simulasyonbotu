@@ -1,4 +1,4 @@
-import type {Analysis,BackfillStatus,Candle,CollectionActivity,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketSnapshot,NewsHealth,NewsItem,NewsMetrics,NewsReaction,NewsSourceHealth,Portfolio,Position,ReactionQueueStatus,ScannerRunResponse,ScannerStatus,Snapshot,StrategyHealth,Trade,WatchItem} from "@/types";
+import type {Analysis,BackfillStatus,Candle,CollectionActivity,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketSnapshot,NewsHealth,NewsItem,NewsMetrics,NewsReaction,NewsSourceHealth,Portfolio,Position,ReactionQueueStatus,ScannerRunResponse,ScannerStatus,Snapshot,StrategyHealth,Trade,UnmatchedNews,WatchItem} from "@/types";
 const API = "/api";
 
 async function get<T>(path: string): Promise<T> {
@@ -35,6 +35,7 @@ export const api = {
   eventStudy: () => get<EventStudy[]>("/news/event-study"),
   newsHealth: () => get<NewsHealth>("/news/health"),
   newsMetrics: () => get<NewsMetrics>("/news/metrics"),
+  unmatchedNews: () => get<UnmatchedNews[]>("/news/unmatched?limit=100"),
   newsSourcesHealth: () => get<NewsSourceHealth[]>("/news/sources/health"),
   reactionQueueStatus: () => get<ReactionQueueStatus>("/news/reactions/status"),
   recentReactions: () => get<NewsReaction[]>("/news/reactions/recent"),

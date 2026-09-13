@@ -20,6 +20,7 @@ from app.services.forward_test import active_forward_run,ensure_forward_run,forw
 from app.services.forward_worker import expected_closed_candle
 from app.services.telegram import TelegramNotifier
 from app.news.service import NewsService
+from app.news.reconciliation import NewsSymbolReconciliationService
 from app.market_memory.backfill import BackfillService
 from app.market_memory.service import MarketMemoryService
 from app.services.collection_activity import recent_activity
@@ -295,6 +296,14 @@ def news_archive(symbol:str|None=None,source:str|None=None,category:str|None=Non
     limit:int=Query(500,ge=1,le=2000),db:Session=Depends(get_db)):
     return dump(NewsService(db,config).archive(symbol,source,category,sentiment,min_importance,
         start,end,overnight_only,reaction_only,limit,reaction_complete_only))
+
+@router.get("/news/unmatched")
+def unmatched_news(limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
+    return dump(NewsService(db,config).unmatched(limit))
+
+@router.post("/news/reconcile-symbols")
+def reconcile_news_symbols(batch_size:int=Query(50,ge=1,le=100),db:Session=Depends(get_db)):
+    return dump(NewsSymbolReconciliationService(db,config).run(batch_size))
 
 
 @router.get("/news/reactions/{symbol}")

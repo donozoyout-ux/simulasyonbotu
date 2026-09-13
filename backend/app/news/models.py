@@ -22,3 +22,4 @@ class NewsRecord:
     company_name: str | None = None
     category: str = "OTHER"
     status: str = "OK"
+    source_metadata: dict | None = None

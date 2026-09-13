@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
@@ -12,8 +14,8 @@ from app.config.settings import AppSettings
 from app.db.session import Base, get_db
 from app.market_memory.backfill import BackfillService
 from app.market_memory.service import MarketMemoryService
-from app.models import Candle, DataCollectionActivity, NewsItem, NewsMarketReaction, NewsSourceState
-from app.news.company_aliases import map_company_symbol
+from app.models import Candle, DataCollectionActivity, NewsCompanyLink, NewsItem, NewsMarketReaction, NewsSourceState
+from app.news.company_aliases import COMPANY_MASTER, CompanyIdentity, map_company_symbol, normalize_company_text, resolve_company_symbols
 from app.news.models import NewsRecord
 from app.news.service import NewsService
 from app.news.sources.registry import SOURCE_REGISTRY
@@ -146,3 +148,97 @@ def test_collection_center_endpoints_return_live_db_state():
         assert isinstance(client.get("/api/news/sources/health").json(),list)
         assert client.get("/api/news/reactions/status").status_code==200
         assert client.get("/api/data-collection/activity").json()[0]["module"]=="NEWS"
+
+
+def test_company_master_covers_every_scanner_symbol():
+    from app.market_data.symbols import BIST100_SYMBOLS
+    assert set(COMPANY_MASTER)==set(BIST100_SYMBOLS) and len(COMPANY_MASTER)==100
+
+
+def test_turkish_normalization_and_legal_suffix_cleanup():
+    assert normalize_company_text("  ŞİŞECAM, Anonim Şirketi! ",strip_legal_suffixes=True)=="sisecam"
+
+
+@pytest.mark.parametrize(("text","symbol"),[
+    ("Türk Hava Yolları yeni uçuşlara başladı","THYAO"),
+    ("Garanti-BBVA dijital bankacılık yatırımı","GARAN"),
+    ("BİM'DE profesyonel oyuncu ekipmanı","BIMAS"),
+    ("Mavi yeni mağaza açtı","MAVI"),
+    ("ASELS savunma sözleşmesi açıkladı","ASELS"),
+])
+def test_alias_turkish_punctuation_short_name_and_ticker(text,symbol):
+    result=resolve_company_symbols(text)
+    assert result.primary_symbol==symbol and result.best_confidence>=85
+
+
+def test_official_name_is_full_confidence():
+    result=resolve_company_symbols("Türkiye Garanti Bankası A.Ş. açıklama yayımladı")
+    assert result.primary_symbol=="GARAN" and result.links[0].match_method=="OFFICIAL_NAME" and result.links[0].confidence==100
+
+
+def test_multi_company_news_has_deterministic_primary_and_all_links():
+    result=resolve_company_symbols("Ford Otosan ile Koç Holding ortak yatırım açıkladı")
+    assert result.primary_symbol=="FROTO" and {x.symbol for x in result.links}=={"FROTO","KCHOL"}
+
+
+def test_ambiguous_group_word_is_not_linked():
+    assert resolve_company_symbols("Anadolu şirketleri büyümeye devam ediyor").primary_symbol is None
+
+
+def test_equal_strength_ambiguous_alias_is_reported_not_linked(monkeypatch):
+    monkeypatch.setitem(COMPANY_MASTER,"TEST1",CompanyIdentity("TEST1","Test Bir A.Ş.","Ortak Marka"))
+    monkeypatch.setitem(COMPANY_MASTER,"TEST2",CompanyIdentity("TEST2","Test İki A.Ş.","Ortak Marka"))
+    result=resolve_company_symbols("Ortak Marka açıklama yaptı")
+    assert result.primary_symbol is None and result.unmatched_reason=="AMBIGUOUS_MATCH"
+
+
+@pytest.mark.parametrize("text",[
+    "bizim için çok önemliydi", "genel piyasa ve enflasyon haberi", "Baykar ihracat rekoru açıkladı",
+])
+def test_negative_false_positive_samples_remain_unmatched(text):
+    assert resolve_company_symbols(text).primary_symbol is None
+
+
+def test_sponsorship_boilerplate_is_not_a_company_news_link():
+    assert resolve_company_symbols("Günün gelişmeleri Halkbank'ın katkılarıyla").primary_symbol is None
+
+
+def test_low_confidence_candidate_is_not_auto_linked():
+    result=resolve_company_symbols("Türkiye Garanti Bankasının sonuçları")
+    assert result.primary_symbol is None and result.unmatched_reason=="LOW_CONFIDENCE" and result.best_confidence==80
+
+
+def test_reconciliation_is_bounded_restart_safe_and_creates_links_and_reactions():
+    db=session();now=datetime.now(timezone.utc)
+    for index,title in enumerate(("BİM'DE kampanya","Ford Otosan ile Koç Holding yatırım yaptı","genel gündem"),1):
+        db.add(NewsItem(source="AA",source_id=f"r{index}",title=title,content="",url=f"https://example.com/{index}",
+            category="OTHER",published_at=now,content_hash=f"reconcile-{index}"))
+    db.commit();service=NewsService(db,config())
+    first=service.reconcile_symbols(2)
+    assert first["processed"]==2 and first["pending"]==1 and first["reactions_created"]==3
+    assert db.scalar(select(func.count()).select_from(NewsCompanyLink))==3
+    second=service.reconcile_symbols(2);third=service.reconcile_symbols(2)
+    assert second["processed"]==1 and second["pending"]==0 and third["processed"]==0
+
+
+def test_reconciliation_revokes_legacy_bizim_false_match_without_telegram():
+    db=session();now=datetime.now(timezone.utc)
+    item=NewsItem(symbol="BIZIM",source="AA",source_id="bad",title="JETEX terminali",content="bizim için önemliydi",
+        url="https://example.com/bad",category="OTHER",published_at=now,content_hash="bad",telegram_sent=False)
+    db.add(item);db.flush();db.add(NewsMarketReaction(news_id=item.id,symbol="BIZIM",status="WAITING_1D"));db.commit()
+    result=NewsService(db,config()).reconcile_symbols(25);db.refresh(item)
+    reaction=db.scalar(select(NewsMarketReaction))
+    assert result["processed"]==1 and item.symbol is None and item.telegram_sent is False
+    assert reaction.status=="ERROR" and reaction.error=="SYMBOL_MAPPING_REVOKED"
+
+
+def test_reconciliation_api_and_unmatched_reason_metrics():
+    db=session();now=datetime.now(timezone.utc)
+    db.add(NewsItem(source="AA",source_id="api-r",title="genel ekonomi",content="",url="https://example.com/r",
+        category="OTHER",published_at=now,content_hash="api-r"));db.commit()
+    app=FastAPI();app.include_router(router,prefix="/api");app.dependency_overrides[get_db]=lambda:db
+    with TestClient(app) as client:
+        assert client.post("/api/news/reconcile-symbols?batch_size=1").json()["processed"]==1
+        assert client.get("/api/news/unmatched").json()[0]["unmatched_reason"]=="NO_COMPANY_MATCH"
+        metrics=client.get("/api/news/metrics").json()
+        assert metrics["reconcile_pending"]==0 and metrics["unmatched_reasons"]["NO_COMPANY_MATCH"]==1

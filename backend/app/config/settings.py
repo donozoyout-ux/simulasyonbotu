@@ -75,6 +75,7 @@ class AppSettings(BaseSettings):
     backfill_candle_limit: int = 1000
     market_memory_enabled: bool = True
     market_memory_reaction_batch: int = 20
+    news_reconcile_batch_size: int = 25
     candle_retention_enabled: bool = False
     candle_retention_5m_days: int = 90
     candle_retention_15m_days: int = 730
