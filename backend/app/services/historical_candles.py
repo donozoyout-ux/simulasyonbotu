@@ -116,13 +116,14 @@ def historical_candles(db, symbol: str, timeframe: str, limit: int,
     display = list(reversed(display_desc))
     calculation_rows = list(reversed(warmup_desc)) + display
     indicator_started = perf_counter()
-    series = indicator_series(calculation_rows)
+    series = indicator_series(calculation_rows, chart_only=True)
     display_series = series[-len(display):] if display else []
     indicator_ms = (perf_counter()-indicator_started)*1000
     serialize_started = perf_counter()
     payload = jsonable_encoder([{**{name: getattr(row, name) for name in
         ("timestamp", "open", "high", "low", "close", "volume", "source")},
-        "indicators": display_series[index]} for index, row in enumerate(display)],
+        "indicators": {key: value for key, value in display_series[index].items() if key != "timestamp"}}
+        for index, row in enumerate(display)],
         custom_encoder={})
     serialize_ms = (perf_counter()-serialize_started)*1000
     # Anchored/ranged history is effectively immutable; latest views refresh quickly.

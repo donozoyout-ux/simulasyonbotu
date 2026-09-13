@@ -121,7 +121,7 @@ def indicator_snapshot(candles: list) -> dict:
     return values
 
 
-def indicator_series(candles: list) -> list[dict]:
+def indicator_series(candles: list, chart_only: bool = False) -> list[dict]:
     """Return prefix indicators in one pass.
 
     ``indicator_snapshot(candles[:n])`` used to rebuild every indicator for every
@@ -166,17 +166,18 @@ def indicator_series(candles: list) -> list[dict]:
         if index:
             change = close - previous_close
             gain, loss = max(change, Decimal(0)), max(-change, Decimal(0))
-            true_range = max(high-low, abs(high-previous_close), abs(low-previous_close))
+            true_range = max(high-low, abs(high-previous_close), abs(low-previous_close)) if not chart_only else None
             if index <= 14:
-                rsi_seed_gain += gain; rsi_seed_loss += loss; atr_seed += true_range
+                rsi_seed_gain += gain; rsi_seed_loss += loss
+                if true_range is not None: atr_seed += true_range
             if index == 14:
                 rsi_gain = rsi_seed_gain / Decimal(14)
                 rsi_loss = rsi_seed_loss / Decimal(14)
-                atr_value = atr_seed / Decimal(14)
+                if not chart_only: atr_value = atr_seed / Decimal(14)
             elif index > 14:
                 rsi_gain = (rsi_gain * 13 + gain) / Decimal(14)
                 rsi_loss = (rsi_loss * 13 + loss) / Decimal(14)
-                atr_value = (atr_value * 13 + true_range) / Decimal(14)
+                if not chart_only: atr_value = (atr_value * 13 + true_range) / Decimal(14)
 
         # MACD uses its own 12/26 EMA pair, advanced with the same seed rule.
         macd_fast_seed += close if index < 12 else Decimal(0)
@@ -201,7 +202,6 @@ def indicator_series(candles: list) -> list[dict]:
             bands = {"upper": middle + Decimal(2)*std, "middle": middle, "lower": middle - Decimal(2)*std}
         else:
             bands = None
-        volatility = realized_volatility(closes, 20)
         volume_window = previous_volumes[-20:]
         volume_sma = sum(volume_window) / Decimal(20) if len(volume_window) == 20 else None
         rsi_value = None if rsi_gain is None else (Decimal(100) if rsi_loss == 0 else
@@ -211,18 +211,20 @@ def indicator_series(candles: list) -> list[dict]:
         current_vwap = cumulative_typical_volume / cumulative_volume if cumulative_volume > 0 else None
         values = {
             "ema20": ema_values[20], "ema50": ema_values[50], "ema200": ema_values[200],
-            "rsi": rsi_value, "macd": macd_result, "bollinger": bands, "atr": atr_value,
-            "atr_pct": atr_value / close * 100 if atr_value and close else None,
+            "rsi": rsi_value, "macd": macd_result, "bollinger": bands,
             "vwap": current_vwap, "volume_sma20": volume_sma,
-            "rvol": volume / volume_sma if volume_sma and volume_sma > 0 else None,
-            "volatility_20d": volatility,
         }
-        values["relative_volume"] = values["rvol"]
-        values["trend_strength"] = (abs(values["ema20"] / values["ema50"] - 1) * 100
-            if values["ema20"] and values["ema50"] else None)
-        for period in (20, 50, 200):
-            value = values[f"ema{period}"]
-            values[f"price_distance_ema{period}_pct"] = (close / value - 1) * 100 if value else None
+        if not chart_only:
+            values.update({"atr": atr_value,
+            "atr_pct": atr_value / close * 100 if atr_value and close else None,
+            "rvol": volume / volume_sma if volume_sma and volume_sma > 0 else None,
+            "volatility_20d": realized_volatility(closes, 20)})
+            values["relative_volume"] = values["rvol"]
+            values["trend_strength"] = (abs(values["ema20"] / values["ema50"] - 1) * 100
+                if values["ema20"] and values["ema50"] else None)
+            for period in (20, 50, 200):
+                value = values[f"ema{period}"]
+                values[f"price_distance_ema{period}_pct"] = (close / value - 1) * 100 if value else None
         rows.append({"timestamp": candle.timestamp, **values})
         previous_volumes.append(volume)
         previous_close = close

@@ -51,3 +51,11 @@ def test_linear_indicator_series_matches_every_prefix_snapshot():
         expected=indicator_snapshot(candles[:index+1])
         assert {key:value for key,value in series[index].items() if key!="timestamp"} == expected
 
+
+def test_chart_indicator_series_only_returns_fields_used_by_ui():
+    start=datetime(2026,1,1,tzinfo=timezone.utc)
+    candles=[CandleData(start+timedelta(minutes=15*i),Decimal("100"),Decimal("102"),
+        Decimal("99"),Decimal("101"),Decimal("1000"),True) for i in range(220)]
+    assert set(indicator_series(candles,chart_only=True)[-1]) == {
+        "timestamp","ema20","ema50","ema200","rsi","macd","bollinger","vwap","volume_sma20"}
+
