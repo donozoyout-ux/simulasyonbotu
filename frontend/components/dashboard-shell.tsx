@@ -348,7 +348,7 @@ export function DashboardShell() {
         </header>
         <div className="statusline">
           <span>{message}</span>
-          <span>
+          <span suppressHydrationWarning>
             Son kontrol:{" "}
             {new Date().toLocaleTimeString("tr-TR", {
               hour: "2-digit",
