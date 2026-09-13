@@ -74,13 +74,30 @@ class ForwardWorker:
         # Always-on maintenance: benchmark refresh happens even after the market closes.
         benchmark = self._refresh_benchmark(run)
 
-        # Outside the session there are no new paper entries/exits. The worker remains
-        # alive and performs maintenance on the slower after-hours cadence.
+        # Outside the session there are no entries, orders, or position management.
+        # A bounded analysis-only scan runs on its own slower cadence.
         if not market_open:
+            if not self.config.off_hours_scan_enabled:
+                return {"status":"market_closed","maintenance":"after_hours","market_open":False,
+                    "analysis_mode":"ANALYSIS_ONLY","entries_enabled":False,"benchmark":benchmark}
+            last=self.db.scalar(select(ScanRun).where(ScanRun.run_id==run.run_id,
+                ScanRun.analysis_mode=="ANALYSIS_ONLY").order_by(ScanRun.started_at.desc()).limit(1))
+            last_at=last.started_at.replace(tzinfo=timezone.utc) if last and last.started_at.tzinfo is None else last.started_at if last else None
+            due_at=last_at+timedelta(minutes=self.config.off_hours_scan_interval_minutes) if last_at else now
+            if now<due_at:
+                return {"status":"off_hours_waiting","maintenance":"after_hours","market_open":False,
+                    "analysis_mode":"ANALYSIS_ONLY","entries_enabled":False,"next_off_hours_scan":due_at,
+                    "benchmark":benchmark}
+            scanner=BistScanner(self.db,self.config,self.provider,require_market_session=False,
+                analysis_mode="ANALYSIS_ONLY",market_open=False,analysis_at=now)
+            result=scanner.run(max_symbols or self.config.off_hours_scan_symbol_limit)
             return {
-                "status": "market_closed",
+                **result,
                 "maintenance": "after_hours",
                 "market_open": False,
+                "analysis_mode":"ANALYSIS_ONLY",
+                "entries_enabled":False,
+                "next_off_hours_scan":now+timedelta(minutes=self.config.off_hours_scan_interval_minutes),
                 "benchmark": benchmark,
             }
 

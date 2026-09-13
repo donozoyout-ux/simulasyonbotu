@@ -68,12 +68,16 @@ def get_provider(config:AppSettings)->MarketDataProvider:
 
 
 class BistScanner:
-    def __init__(self,db:Session,config:AppSettings,provider:MarketDataProvider|None=None,require_market_session:bool=True):
+    def __init__(self,db:Session,config:AppSettings,provider:MarketDataProvider|None=None,require_market_session:bool=True,
+                 analysis_mode:str="LIVE",market_open:bool|None=None,analysis_at:datetime|None=None):
         self.db,self.config=db,config
         self.runtime=effective_settings(db,config)
         self.analysis_config=config.model_copy(update=self.runtime)
         self.provider=provider or get_provider(config)
-        self.require_market_session=require_market_session
+        self.analysis_mode=analysis_mode if analysis_mode in {"LIVE","ANALYSIS_ONLY"} else "LIVE"
+        self.market_open=market_open
+        self.analysis_at=analysis_at
+        self.require_market_session=require_market_session and self.analysis_mode=="LIVE"
         self.universe=UniverseBuilder(self.provider,self.analysis_config)
         self.ai_advisor=GroqAdvisor(config)
         self.telegram=TelegramNotifier(config)
@@ -150,6 +154,11 @@ class BistScanner:
         frames=self._data(symbol);source="mock" if self.config.data_mode=="mock" else self.provider.name
         result=analyze_frames(symbol,frames,self.analysis_config,source,analysis_at,self.require_market_session)
         details=json_safe(result.details)
+        market_open=self.market_open if self.market_open is not None else BistMarketSession.from_config(self.config).is_open(analysis_at)
+        details.update({"analysis_mode":self.analysis_mode,"market_open":market_open,
+            "source_candle_timestamp":result.signal_candle_time.isoformat(),
+            "stale_session":self.analysis_mode=="ANALYSIS_ONLY" and not market_open,
+            "entries_enabled":self.analysis_mode=="LIVE" and market_open})
         details["technical_score"]=result.score
         details["relative_strength"]=json_safe(self._relative_strength(frames["1d"]))
         news_rows=self.db.scalars(select(NewsItem).where(NewsItem.symbol==symbol).order_by(NewsItem.published_at.desc()).limit(5)).all()
@@ -195,7 +204,7 @@ class BistScanner:
             result.funnel["data_valid"],bool(details["analysis_complete"]),result.funnel["sufficient_history"],sum(c.volume for c in frames["15m"][-20:])>0,
             price=result.price,setup_quality=details.get("setup",{}).get("score"),trend=result.trend,structure=result.market_structure,
             support=details.get("levels",{}).get("support"),resistance=details.get("levels",{}).get("resistance"),
-            rr=details.get("risk_reward"),run_id=self.forward_run.run_id if self.forward_run else None)
+            rr=details.get("risk_reward"),run_id=self.forward_run.run_id if self.forward_run else None,analysis_mode=self.analysis_mode)
         if previous and item is None:self._log("WATCHLIST","REMOVED",result.reason,symbol,result.score)
         context=details.get("analysis_context",{})
         self._log("AI_ADVISORY",opinion["status"],opinion.get("summary") or opinion["reason"],symbol,result.score,
@@ -205,7 +214,7 @@ class BistScanner:
             "signal_candle_time":result.signal_candle_time.isoformat(),"universe_status":assessment.status,
             "daily_context_timestamp":context.get("daily_candle_time"),"hourly_context_timestamp":context.get("hourly_candle_time"),
             "trigger_15m_timestamp":context.get("entry_candle_time")})
-        if self.config.telegram_signal_alerts and result.decision=="POSSIBLE_ENTRY" and result.score>=self.runtime["entry_score"]:
+        if self.analysis_mode=="LIVE" and self.config.telegram_signal_alerts and result.decision=="POSSIBLE_ENTRY" and result.score>=self.runtime["entry_score"]:
             telegram_key=f"SIGNAL:{self.forward_run.run_id if self.forward_run else 'NO-RUN'}:{symbol}:{result.signal_candle_time.isoformat()}"
             self._telegram_once(telegram_key,self.telegram.signal_message(
                 symbol,result.score,result.setup,result.price,details.get("risk_reward"),opinion
@@ -246,18 +255,20 @@ class BistScanner:
         )).all())
         return {"status":"positions_checked","timeframe":timeframe,"open_before":len(before),"open_after":len(after)}
 
-    def _try_entries(self,items,funnel:dict,allow_entries:bool=True)->None:
+    def _try_entries(self,items,funnel:dict,allow_entries:bool=True,analysis_mode:str|None=None,market_open:bool|None=None)->None:
         portfolio=ensure_portfolio(self.db,self.config.initial_balance)
         run=self.forward_run
         broker=PaperBroker(self.db,self.runtime["commission_rate"],self.runtime["slippage_rate"],self.config.intrabar_policy,
             run.run_id if run else None,run.strategy_version if run else None,run.strategy_config_hash if run else None)
-        market_open=BistMarketSession.from_config(self.config).is_open()
+        analysis_mode=analysis_mode or self.analysis_mode
+        session_open=BistMarketSession.from_config(self.config).is_open()
+        market_open=session_open if market_open is None else market_open and session_open
         config_matches=bool(run and run.strategy_config_hash==strategy_config_snapshot(self.analysis_config)["sha256"])
-        entries_enabled=allow_entries and self.config.operation_mode=="LIVE_PAPER" and self.config.data_mode=="live" and self.provider.name!="mock" and market_open and bool(run and not run.paused) and config_matches
+        entries_enabled=allow_entries and analysis_mode=="LIVE" and self.config.operation_mode=="LIVE_PAPER" and self.config.data_mode=="live" and self.provider.name!="mock" and market_open and bool(run and not run.paused) and config_matches
         if not entries_enabled:
             self._log("ENTRY_GATE","NO_NEW_ENTRY","Entry gate closed: provider/data/session/pause/config safety condition",
                 details={"market_open":market_open,"paused":bool(run and run.paused),"provider":self.provider.name,
-                    "mode":self.config.operation_mode,"config_match":config_matches})
+                    "mode":self.config.operation_mode,"analysis_mode":analysis_mode,"config_match":config_matches})
         for analysis,result,assessment in sorted(items,key=lambda pair:pair[0].score,reverse=True):
             if analysis.decision!="POSSIBLE_ENTRY":continue
             if not entries_enabled:continue
@@ -287,16 +298,21 @@ class BistScanner:
             except DuplicateOrderError:self._log("ORDER","DUPLICATE_BLOCKED",key,analysis.symbol,analysis.score)
 
     def _run_cycle(self,max_symbols:int|None=None,closed_candle_timestamp:datetime|None=None)->dict:
-        started=datetime.now(timezone.utc);clock=perf_counter();self.forward_run=ensure_forward_run(self.db,self.config)
-        symbols=self.universe.candidates(max_symbols,closed_candle_timestamp)
+        started=self.analysis_at or datetime.now(timezone.utc);clock=perf_counter();self.forward_run=ensure_forward_run(self.db,self.config,started)
+        market_open=self.market_open if self.market_open is not None else BistMarketSession.from_config(self.config).is_open(started)
+        analysis_at=started
+        slot_minutes=self.config.off_hours_scan_interval_minutes if self.analysis_mode=="ANALYSIS_ONLY" else 15
+        symbols=self.universe.candidates(max_symbols,started if self.analysis_mode=="ANALYSIS_ONLY" else closed_candle_timestamp,slot_minutes)
         funnel={"total":len(symbols),"data_valid":0,"sufficient_history":0,"htf_bullish":0,"valid_setup":0,"score_pass":0,"rr_pass":0,"risk_pass":0,"buy":0}
         run=ScanRun(started_at=started,provider=self.provider.name,data_mode=self.config.data_mode,total_symbols=len(symbols),valid_symbols=0,failed_symbols=0,stale_symbols=0,funnel={},errors=[],
-            run_id=self.forward_run.run_id,timeframe="15m",closed_candle_timestamp=closed_candle_timestamp)
+            run_id=self.forward_run.run_id,timeframe="15m",closed_candle_timestamp=closed_candle_timestamp,
+            analysis_mode=self.analysis_mode,market_open=market_open)
         self.db.add(run);self.db.commit();self._log("SCANNER","STARTED",f"{len(symbols)} sembol")
-        self._manage_positions();items=[];errors=[]
+        if self.analysis_mode=="LIVE" and market_open:self._manage_positions()
+        items=[];errors=[]
         for symbol in symbols:
             try:
-                analysis,result,assessment=self.analyze_symbol(symbol);items.append((analysis,result,assessment))
+                analysis,result,assessment=self.analyze_symbol(symbol,analysis_at);items.append((analysis,result,assessment))
                 for key in ("data_valid","sufficient_history","htf_bullish","valid_setup","score_pass","rr_pass"):funnel[key]+=int(result.funnel[key])
                 if not result.funnel["data_valid"]:run.stale_symbols+=1
             except Exception as exc:
@@ -305,13 +321,18 @@ class BistScanner:
                 self.db.rollback()
                 error=safe_provider_error(exc)
                 errors.append({"symbol":symbol,"error":error});logger.warning("symbol_failed symbol=%s error=%s",symbol,error)
-        self._try_entries(items,funnel,allow_entries=not errors);take_snapshot(self.db,self.config.initial_balance,self.forward_run.run_id)
+        self._try_entries(items,funnel,allow_entries=not errors,analysis_mode=self.analysis_mode,market_open=market_open)
+        take_snapshot(self.db,self.config.initial_balance,self.forward_run.run_id)
         upsert_daily_summary(self.db,self.config,self.forward_run)
         run.completed_at=datetime.now(timezone.utc);run.duration_ms=round((perf_counter()-clock)*1000);run.valid_symbols=len(items);run.failed_symbols=len(errors);run.funnel=funnel;run.errors=errors
         run.watchlist_count=self.db.scalar(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.run_id==self.forward_run.run_id)) or 0
+        run.source_candle_timestamp=max((item[1].signal_candle_time for item in items),default=None)
+        if self.analysis_mode=="ANALYSIS_ONLY":run.closed_candle_timestamp=run.source_candle_timestamp
         run.signals=sum(item[0].decision=="POSSIBLE_ENTRY" for item in items);run.entries=funnel["buy"];self.db.commit()
         self._log("SCANNER","COMPLETED",f"{len(items)} analiz, {len(errors)} hata, {funnel['buy']} BUY",details=funnel)
         return {"status":"completed","analyzed":len(items),"errors":errors,"funnel":funnel,"duration_ms":run.duration_ms,
+            "analysis_mode":self.analysis_mode,"market_open":market_open,"entries_enabled":self.analysis_mode=="LIVE" and market_open,
+            "source_candle_timestamp":run.source_candle_timestamp,
             "results":[{"symbol":a.symbol,"score":a.score,"decision":a.decision,"source":a.data_source,
                 "universe_status":assessment.status} for a,_,assessment in sorted(items,key=lambda pair:pair[0].score,reverse=True)]}
 

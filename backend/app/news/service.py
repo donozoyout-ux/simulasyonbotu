@@ -71,7 +71,7 @@ class NewsService:
     @staticmethod
     def _resolve(record):
         return resolve_company_symbols(record.title,record.content,record.company_name or "",
-            structured_symbol=record.symbol,structured_company=record.company_name)
+            structured_symbol=record.symbol if record.symbol_is_structured else None,structured_company=record.company_name)
 
     def _apply_resolution(self,item:NewsItem,resolution:CompanyResolution,now:datetime,*,replace_links:bool=True)->int:
         prior_symbol,prior_company=item.symbol,item.company_name
@@ -154,8 +154,10 @@ class NewsService:
                         exists.updated_at=now
                         self._apply_resolution(exists,resolution,now)
                         duplicates+=1;continue
-                    payload={**record.__dict__,"symbol":symbol,"company_name":company_name,
+                    payload={key:value for key,value in record.__dict__.items() if key!="symbol_is_structured"}
+                    payload.update({"symbol":symbol,"company_name":company_name,
                         "source_metadata":record.source_metadata or {}}
+                    )
                     item=NewsItem(**payload,content_hash=digest,first_seen_at=now,fetched_at=now,updated_at=now,
                         overnight_news=not session.is_open(record.published_at),telegram_eligible=not backfill,
                         ingestion_mode="BACKFILL" if backfill else "LIVE",

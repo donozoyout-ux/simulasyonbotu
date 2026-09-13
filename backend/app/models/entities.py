@@ -215,6 +215,9 @@ class ScanRun(Base):
     watchlist_count: Mapped[int] = mapped_column(Integer, default=0)
     signals: Mapped[int] = mapped_column(Integer, default=0)
     entries: Mapped[int] = mapped_column(Integer, default=0)
+    analysis_mode: Mapped[str] = mapped_column(String(16), default="LIVE", index=True)
+    market_open: Mapped[bool] = mapped_column(Boolean, default=True)
+    source_candle_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ForwardRun(Base):
@@ -397,6 +400,7 @@ class MarketStateSnapshot(Base):
     xu100_price: Mapped[Decimal | None] = mapped_column(money, nullable=True)
     data_source: Mapped[str] = mapped_column(String(32))
     data_quality: Mapped[str] = mapped_column(String(16), default="VALID")
+    analysis_mode: Mapped[str] = mapped_column(String(16), default="LIVE")
 
 
 class NewsMarketReaction(Base):

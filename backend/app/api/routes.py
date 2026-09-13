@@ -80,8 +80,10 @@ def telegram_test():
 def data_health(db: Session = Depends(get_db)):
     forward=active_forward_run(db)
     run=db.scalar(select(ScanRun).where(ScanRun.run_id==forward.run_id).order_by(desc(ScanRun.started_at)).limit(1)) if forward else None
-    if not run:return {"provider":config.market_data_provider,"mode":config.data_mode.upper(),"status":"NO_SCAN","valid_symbols":0,"failed_symbols":0,"stale_symbols":0,"errors":[]}
+    market_open=BistMarketSession.from_config(config).is_open()
+    if not run:return {"provider":config.market_data_provider,"mode":config.data_mode.upper(),"status":"NO_SCAN","market_open":market_open,"analysis_mode":"LIVE" if market_open else "ANALYSIS_ONLY","valid_symbols":0,"failed_symbols":0,"stale_symbols":0,"errors":[]}
     return dump({"provider":run.provider,"mode":run.data_mode.upper(),"status":scan_data_health_status(run),
+        "market_open":market_open,"analysis_mode":run.analysis_mode,
         "last_successful_fetch":run.completed_at,"scanner_last_run":run.started_at,"scanner_duration_ms":run.duration_ms,
         "valid_symbols":run.valid_symbols,"failed_symbols":run.failed_symbols,"stale_symbols":run.stale_symbols,
         "errors":run.errors,"funnel":run.funnel})
@@ -222,9 +224,18 @@ def scanner_status(db: Session = Depends(get_db)):
     elif last.failed_symbols:status="COMPLETE_WITH_ERRORS"
     else:status="COMPLETE"
     last_closed=expected_closed_candle(config,now)
+    market_open=session.is_open(now);analysis_mode="LIVE" if market_open else "ANALYSIS_ONLY"
+    last_market_candle=db.scalar(select(func.max(Analysis.signal_candle_time)).where(Analysis.run_id==run.run_id))
+    last_off_hours=next((item for item in scans if item.analysis_mode=="ANALYSIS_ONLY"),None)
+    next_off_hours=(last_off_hours.started_at+timedelta(minutes=config.off_hours_scan_interval_minutes)
+        if last_off_hours and last_off_hours.started_at else now) if config.off_hours_scan_enabled and not market_open else None
     return dump({
         "status":status,
-        "market_status":"MARKET OPEN" if session.is_open(now) else "MARKET CLOSED",
+        "market_status":"MARKET OPEN" if market_open else "MARKET CLOSED",
+        "analysis_mode":analysis_mode,"entries_enabled":market_open and analysis_mode=="LIVE",
+        "last_market_candle":last_market_candle,"off_hours_scan_enabled":config.off_hours_scan_enabled,
+        "off_hours_scan_interval_minutes":config.off_hours_scan_interval_minutes,
+        "off_hours_scan_symbol_limit":config.off_hours_scan_symbol_limit,"next_off_hours_scan":next_off_hours,
         "provider":config.market_data_provider,
         "auto_worker":config.embedded_worker_enabled,
         "scanner_symbol_limit":config.scanner_symbol_limit,
@@ -240,13 +251,15 @@ def scanner_status(db: Session = Depends(get_db)):
             "total_symbols":last.total_symbols,"valid_symbols":last.valid_symbols,"failed_symbols":last.failed_symbols,
             "stale_symbols":last.stale_symbols,"watchlist_count":last.watchlist_count,"signals":last.signals,
             "entries":last.entries,"errors":last.errors[:20] if last.errors else [],
-            "funnel":last.funnel or {}
+            "funnel":last.funnel or {},"analysis_mode":last.analysis_mode,"market_open":last.market_open,
+            "source_candle_timestamp":last.source_candle_timestamp,
         },
         "recent_scans":[{
             "id":item.id,"started_at":item.started_at,"completed_at":item.completed_at,
             "total_symbols":item.total_symbols,"valid_symbols":item.valid_symbols,
             "failed_symbols":item.failed_symbols,"watchlist_count":item.watchlist_count,
             "signals":item.signals,"entries":item.entries
+            ,"analysis_mode":item.analysis_mode
         } for item in scans]
     })
 
@@ -413,11 +426,12 @@ def decisions(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_d
 
 
 @router.post("/scanner/run")
-def scanner_run(max_symbols: int | None = Query(None, ge=1, le=100), db: Session = Depends(get_db)):
-    if config.data_mode=="live" and not BistMarketSession.from_config(config).is_open():
-        return {"status":"market_closed","analyzed":0,"errors":[],"results":[]}
+def scanner_run(max_symbols: int | None = Query(None, ge=1, le=100),db: Session = Depends(get_db),mode:str|None=Query(None,pattern="^(analysis_only|live)$")):
+    market_open=BistMarketSession.from_config(config).is_open()
+    analysis_mode="ANALYSIS_ONLY" if mode=="analysis_only" or not market_open else "LIVE"
     limit=min(max_symbols or config.manual_scan_symbol_limit,config.scanner_symbol_limit)
-    return BistScanner(db, config).run(limit)
+    return BistScanner(db,config,require_market_session=analysis_mode=="LIVE",analysis_mode=analysis_mode,
+        market_open=market_open).run(limit)
 
 
 @router.get("/settings")

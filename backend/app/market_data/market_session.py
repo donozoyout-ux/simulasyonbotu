@@ -60,12 +60,21 @@ class BistMarketSession:
             return "OPEN_CANDLE"
         local_now = now_utc.astimezone(self.tz)
         local_candle = candle_time.astimezone(self.tz)
-        if timeframe == "1d" and local_candle.date() == self.previous_trading_day(local_now.date()):
-            return "FRESH"
-        if local_candle.date() == self.previous_trading_day(local_now.date()):
-            candle_close = local_candle + TIMEFRAME_DELTA[timeframe]
-            if candle_close.time() >= self.close_time:
+        if self.is_open(now_utc):
+            previous=self.previous_trading_day(local_now.date())
+            if timeframe=="1d" and local_candle.date()==previous:
                 return "FRESH"
-        if self.is_open(now_utc) and now_utc - candle_time > timedelta(minutes=stale_minutes):
+            first_close=datetime.combine(local_now.date(),self.open_time,self.tz)+TIMEFRAME_DELTA[timeframe]
+            if local_candle.date()==previous and local_now<first_close:
+                return "FRESH"
+            return "STALE" if now_utc-candle_time>timedelta(minutes=stale_minutes) else "FRESH"
+        if self.is_trading_day(local_now.date()) and local_now.time()>=self.close_time:
+            last_session=local_now.date()
+        else:
+            last_session=self.previous_trading_day(local_now.date())
+        if local_candle.date()!=last_session:
             return "STALE"
-        return "FRESH"
+        if timeframe=="1d":
+            return "FRESH"
+        candle_close=min(local_candle+TIMEFRAME_DELTA[timeframe],datetime.combine(last_session,self.close_time,self.tz))
+        return "FRESH" if candle_close.time()>=self.close_time else "STALE"

@@ -28,6 +28,11 @@ export type Analysis = {
   ai_model?: string;
   ai_result?: AISecondOpinion;
   details: {
+    analysis_mode?: "LIVE" | "ANALYSIS_ONLY";
+    market_open?: boolean;
+    source_candle_timestamp?: string;
+    stale_session?: boolean;
+    entries_enabled?: boolean;
     ai?: AISecondOpinion;
     analysis_context?: {
       daily_candle_time: string;
@@ -180,6 +185,8 @@ export type DataHealth = {
   provider: string;
   mode: string;
   status: string;
+  market_open?: boolean;
+  analysis_mode?: "LIVE" | "ANALYSIS_ONLY";
   last_successful_fetch?: string;
   scanner_last_run?: string;
   scanner_duration_ms?: number;
@@ -192,6 +199,13 @@ export type DataHealth = {
 export type ScannerStatus = {
   status: "NO_SCAN" | "RUNNING" | "COMPLETE" | "COMPLETE_WITH_ERRORS";
   market_status: "MARKET OPEN" | "MARKET CLOSED";
+  analysis_mode: "LIVE" | "ANALYSIS_ONLY";
+  entries_enabled: boolean;
+  last_market_candle?: string;
+  off_hours_scan_enabled: boolean;
+  off_hours_scan_interval_minutes: number;
+  off_hours_scan_symbol_limit: number;
+  next_off_hours_scan?: string;
   provider: string;
   auto_worker: boolean;
   scanner_symbol_limit: number;
@@ -215,6 +229,9 @@ export type ScannerStatus = {
     entries: number;
     errors: Array<{symbol:string;error:string}>;
     funnel: Record<string,number>;
+    analysis_mode:string;
+    market_open:boolean;
+    source_candle_timestamp?:string;
   } | null;
   recent_scans: Array<{
     id:number;
@@ -226,11 +243,16 @@ export type ScannerStatus = {
     watchlist_count:number;
     signals:number;
     entries:number;
+    analysis_mode:string;
   }>;
 };
 
 export type ScannerRunResponse = {
-  status: "completed" | "market_closed" | "already_running" | "wrong_mode";
+  status: "completed" | "market_closed" | "off_hours_waiting" | "already_running" | "wrong_mode";
+  analysis_mode?: "LIVE" | "ANALYSIS_ONLY";
+  market_open?: boolean;
+  entries_enabled?: boolean;
+  source_candle_timestamp?: string;
   analyzed: number;
   duration_ms?: number;
   errors: Array<{ symbol: string; error: string }>;

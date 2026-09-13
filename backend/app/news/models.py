@@ -23,3 +23,4 @@ class NewsRecord:
     category: str = "OTHER"
     status: str = "OK"
     source_metadata: dict | None = None
+    symbol_is_structured: bool = True

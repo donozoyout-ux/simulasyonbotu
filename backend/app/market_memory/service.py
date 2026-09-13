@@ -86,6 +86,7 @@ class MarketMemoryService:
             "relative_strength_20d": _decimal(relative.get("relative_strength_20d")),
             "xu100_price": _decimal(xu100_price), "data_source": analysis.data_source,
             "data_quality": "VALID" if analysis.data_valid else "PARTIAL",
+            "analysis_mode": details.get("analysis_mode", "LIVE"),
         }
 
     def record_analysis(self, analysis: Analysis, xu100_price=None):

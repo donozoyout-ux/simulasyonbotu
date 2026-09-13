@@ -24,6 +24,12 @@ services:
         value: "300"
       - key: AFTER_HOURS_POLL_SECONDS
         value: "900"
+      - key: OFF_HOURS_SCAN_ENABLED
+        value: "true"
+      - key: OFF_HOURS_SCAN_INTERVAL_MINUTES
+        value: "30"
+      - key: OFF_HOURS_SCAN_SYMBOL_LIMIT
+        value: "30"
       - key: SCANNER_SYMBOL_LIMIT
         value: "30"
       - key: MANUAL_SCAN_SYMBOL_LIMIT
@@ -72,6 +78,8 @@ services:
         sync: false
       - key: TELEGRAM_SIGNAL_ALERTS
         value: "true"
+      - key: TELEGRAM_OFF_HOURS_ANALYSIS
+        value: "false"
       - key: TWELVE_DATA_API_KEY
         sync: false
       - key: EODHD_API_TOKEN

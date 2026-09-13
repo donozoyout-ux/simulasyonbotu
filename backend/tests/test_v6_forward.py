@@ -59,11 +59,12 @@ def test_worker_failed_marker_is_retried_after_crash():
             assert worker.run_once(at)["status"]=="completed"
 
 
-def test_weekend_has_no_scan():
+def test_weekend_runs_analysis_only_scan():
     cfg=config();saturday=datetime(2026,9,12,9,tzinfo=timezone.utc)
     assert expected_closed_candle(cfg,saturday) is None
     with Session(database()) as db:
-        assert ForwardWorker(db,cfg,provider()).run_once(saturday)["status"]=="market_closed"
+        result=ForwardWorker(db,cfg,provider()).run_once(saturday)
+        assert result["status"]=="completed" and result["analysis_mode"]=="ANALYSIS_ONLY" and result["entries_enabled"] is False
 
 
 def _possible_entry():

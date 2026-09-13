@@ -244,7 +244,7 @@ export function DashboardShell() {
     try {
       const result = await api.scan(maxSymbols);
       await load();
-      setMessage(result.status === "market_closed" ? "Piyasa kapalı — yeni trading scan başlatılmadı" : "Tarama tamamlandı");
+      setMessage(result.analysis_mode === "ANALYSIS_ONLY" ? `Kapalı piyasa analizi tamamlandı • ${result.analyzed} sembol • emirler devre dışı` : "Tarama tamamlandı");
     } catch {
       setMessage("Tarama başlatılamadı — backend durumunu kontrol edin");
     } finally {
@@ -339,10 +339,10 @@ export function DashboardShell() {
             <button
               className="scan"
               onClick={() => void scan()}
-              disabled={loading || forward?.market_status !== "MARKET OPEN"}
+              disabled={loading}
             >
               <RefreshCw size={16} className={loading ? "spin" : ""} />
-              {loading ? "Taranıyor" : "Taramayı çalıştır"}
+              {loading ? "Taranıyor" : forward?.market_status==="MARKET CLOSED"?"Analizi çalıştır":"Taramayı çalıştır"}
             </button>
           </div>
         </header>
@@ -380,6 +380,7 @@ export function DashboardShell() {
           <Watchlist
             rows={watch}
             analyses={analyses}
+            status={scannerStatus}
             onSelect={(s) => {
               setSelected(s);
               setView("Grafik Analizi");
@@ -1014,10 +1015,12 @@ function DataHealthPanel({ health }: { health: DataHealth }) {
 function Watchlist({
   rows,
   analyses,
+  status,
   onSelect,
 }: {
   rows: WatchItem[];
   analyses: Analysis[];
+  status?: ScannerStatus;
   onSelect: (s: string) => void;
 }) {
   return (
@@ -1026,6 +1029,7 @@ function Watchlist({
         title="Otomatik Takip Listesi"
         sub={`${rows.length} aday • puana göre sıralı`}
       />
+      {status?.analysis_mode==="ANALYSIS_ONLY"?<div className="health-banner warn" style={{marginBottom:"1rem"}}><ShieldCheck size={18}/><span><b>PİYASA KAPALI — ANALİZ MODU</b> Bu sonuçlar son kapanmış piyasa verileriyle hesaplanır. Yeni emir oluşturulmaz.</span></div>:null}
       {!rows.length ? (
         <div className="health-banner warn" style={{ marginBottom: "1rem" }}>
           <ListFilter size={18} />
@@ -1146,9 +1150,11 @@ function ScannerCenter({
         <div className="strategy-grid">
           <div>
             <span>Scanner</span>
-            <b>{status?.status || "BEKLENIYOR"}</b>
+            <b>{status?.analysis_mode==="ANALYSIS_ONLY"?"ANALYSIS ONLY":status?.status || "BEKLENIYOR"}</b>
             <small>{status?.market_status || "—"}</small>
           </div>
+          <div><span>Entries</span><b>{status?.entries_enabled?"ENABLED":"DISABLED"}</b><small>Order authority</small></div>
+          <div><span>Source candle</span><b>{status?.last_market_candle?fmtDate(status.last_market_candle):"—"}</b><small>Son geçerli piyasa mumu</small></div>
           <div>
             <span>Batch</span>
             <b>{status?.scanner_symbol_limit ?? 30} sembol</b>
@@ -1191,32 +1197,32 @@ function ScannerCenter({
           </div>
           <div>
             <span>Sonraki Otomatik Tarama</span>
-            <b>{status?.next_automatic_scan ? fmtDate(status.next_automatic_scan) : "—"}</b>
-            <small>Yeni kapanmış 15M mumda</small>
+            <b>{status?.analysis_mode==="ANALYSIS_ONLY"&&status?.next_off_hours_scan?fmtDate(status.next_off_hours_scan):status?.next_automatic_scan ? fmtDate(status.next_automatic_scan) : "—"}</b>
+            <small>{status?.analysis_mode==="ANALYSIS_ONLY"?`${status.off_hours_scan_interval_minutes} dk off-hours cadence`:"Yeni kapanmış 15M mumda"}</small>
           </div>
         </div>
         <div className="header-actions" style={{ marginTop: "1rem", justifyContent: "flex-start" }}>
           <button
             className="scan"
-            disabled={loading || status?.market_status !== "MARKET OPEN"}
+            disabled={loading}
             onClick={() => void onScan(status?.manual_scan_symbol_limit ?? 10)}
           >
             <RefreshCw size={16} className={loading ? "spin" : ""} />
-            {loading ? "Taranıyor" : (status?.manual_scan_symbol_limit ?? 10) + " hisse test tara"}
+            {loading ? "Taranıyor" : (status?.manual_scan_symbol_limit ?? 10) + (status?.analysis_mode==="ANALYSIS_ONLY"?" hisse analiz et":" hisse tara")}
           </button>
           <button
             className="pause-control"
-            disabled={loading || status?.market_status !== "MARKET OPEN"}
-            onClick={() => void onScan(status?.scanner_symbol_limit ?? 30)}
+            disabled={loading}
+            onClick={() => void onScan(status?.analysis_mode==="ANALYSIS_ONLY"?(status?.off_hours_scan_symbol_limit??30):(status?.scanner_symbol_limit??30))}
           >
             <RefreshCw size={15} />
-            Batch taraması
+            {status?.analysis_mode==="ANALYSIS_ONLY"?`${status?.off_hours_scan_symbol_limit??30} hisse analiz et`:"Batch taraması"}
           </button>
         </div>
         {status?.market_status === "MARKET CLOSED" ? (
           <div className="health-banner warn" style={{ marginTop: "1rem" }}>
             <RefreshCw size={18} />
-            <span><b>Piyasa kapalı — yeni trading scan başlatılmaz.</b> Worker maintenance, haber ve benchmark kontrollerini sürdürür.</span>
+            <span><b>PİYASA KAPALI — ANALİZ MODU.</b> Son kapanmış piyasa verileri analiz edilir; yeni emir oluşturulmaz.</span>
           </div>
         ) : null}
         {last?.errors?.length ? (
@@ -1438,6 +1444,11 @@ function AnalysisViewGroq({
           </div>
         </div>
         <dl>
+          <Stat label="Analysis Mode" value={chosen.details.analysis_mode||"LIVE"} />
+          <Stat label="Market" value={chosen.details.market_open===false?"CLOSED":"OPEN"} />
+          <Stat label="Order Authority" value={chosen.details.entries_enabled?"SESSION GATED":"DISABLED"} />
+          <Stat label="Last Market Candle" value={chosen.details.source_candle_timestamp?fmtDate(chosen.details.source_candle_timestamp):"—"} />
+          <Stat label="AI" value="ADVISORY ONLY" />
           <Stat label="Data source" value={chosen.data_source} />
           <Stat
             label="Last closed candle"

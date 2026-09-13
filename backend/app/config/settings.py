@@ -50,6 +50,9 @@ class AppSettings(BaseSettings):
     embedded_worker_enabled: bool = True
     market_open_poll_seconds: int = 300
     after_hours_poll_seconds: int = 900
+    off_hours_scan_enabled: bool = True
+    off_hours_scan_interval_minutes: int = 30
+    off_hours_scan_symbol_limit: int = 30
     ai_enabled: bool = True
     ai_provider: str = "groq"
     groq_api_key: SecretStr | None = None
@@ -61,6 +64,7 @@ class AppSettings(BaseSettings):
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
     telegram_signal_alerts: bool = True
+    telegram_off_hours_analysis: bool = False
     telegram_timeout_seconds: float = 15
     news_enabled: bool = True
     kap_enabled: bool = True

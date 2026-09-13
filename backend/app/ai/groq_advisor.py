@@ -67,6 +67,9 @@ def build_snapshot(symbol: str, price: Any, score: int, decision: str, details: 
         "relative_strength": details.get("relative_strength", {}),
         "recent_news": details.get("news", {}).get("items", [])[:5],
         "market_memory": details.get("market_memory", {}),
+        "market_open": details.get("market_open"),
+        "analysis_mode": details.get("analysis_mode", "LIVE"),
+        "order_authority": "DISABLED" if details.get("analysis_mode")=="ANALYSIS_ONLY" else "SESSION_GATED",
         "closed_candle_timestamps": {
             "1d": context.get("daily_candle_time"),
             "1h": context.get("hourly_candle_time"),
@@ -125,7 +128,8 @@ class GroqAdvisor:
                         "Do not calculate indicators. Never change or recommend changing the strategy decision, "
                         "score, entry, stop, target, position size, or any execution action. Return only a JSON object "
                         "with verdict (CONFIRM, WATCH, or AVOID), confidence (0-100), summary, strengths (array), "
-                        "risks (array), and invalidation_note. Respond in Turkish."
+                        "risks (array), and invalidation_note. When analysis_mode is ANALYSIS_ONLY, the market is closed "
+                        "and there is no order authority. Respond in Turkish."
                     ),
                 },
                 {"role": "user", "content": json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))},

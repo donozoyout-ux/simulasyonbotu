@@ -5,7 +5,7 @@ from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
 
 from app.news.company_aliases import resolve_company_symbols
-from app.news.models import NewsRecord
+from app.news.models import NewsRecord,infer_symbol
 from app.news.security import validate_source_url
 from app.news.sources.base import NewsSource
 
@@ -31,7 +31,7 @@ def parse_rss(payload: str, source: str = "AA", base_url: str = PUBLIC_RSS_URL) 
         categories=[(node.text or "").strip() for node in item.findall("category") if (node.text or "").strip()]
         metadata={"guid":source_id[:200],"categories":categories,"author":(item.findtext("author") or "").strip()}
         records.append(NewsRecord(source, source_id[:200], title[:500], content, url, published,
-            source_metadata=metadata))
+            symbol=infer_symbol(title,content),source_metadata=metadata,symbol_is_structured=False))
     return records
 
 
