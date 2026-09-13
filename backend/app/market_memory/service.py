@@ -5,7 +5,7 @@ from decimal import Decimal
 from statistics import median
 from types import SimpleNamespace
 
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import case, desc, func, or_, select
 
 from app.analysis.pipeline import analyze_frames
 from app.market_data.provider import CandleData
@@ -144,6 +144,113 @@ class MarketMemoryService:
         if start: stmt = stmt.where(NewsItem.published_at >= start)
         if end: stmt = stmt.where(NewsItem.published_at <= end)
         return self.db.scalars(stmt.order_by(NewsItem.published_at).limit(limit)).all()
+
+    def memory_symbols(self):
+        """Small aggregate inventory used by the UI filters; no provider access."""
+        inventory = {}
+        for symbol, count, latest in self.db.execute(select(
+            MarketStateSnapshot.symbol, func.count(MarketStateSnapshot.id), func.max(MarketStateSnapshot.timestamp)
+        ).group_by(MarketStateSnapshot.symbol)):
+            inventory[symbol] = {"symbol": symbol, "snapshot_count": count, "news_count": 0,
+                "reaction_count": 0, "completed_reaction_count": 0, "latest_snapshot_at": latest,
+                "latest_news_at": None}
+        for symbol, count, latest in self.db.execute(select(
+            NewsItem.symbol, func.count(NewsItem.id), func.max(NewsItem.published_at)
+        ).where(NewsItem.symbol.is_not(None)).group_by(NewsItem.symbol)):
+            row = inventory.setdefault(symbol, {"symbol": symbol, "snapshot_count": 0, "news_count": 0,
+                "reaction_count": 0, "completed_reaction_count": 0, "latest_snapshot_at": None,
+                "latest_news_at": None})
+            row.update(news_count=count, latest_news_at=latest)
+        for symbol, count, complete in self.db.execute(select(
+            NewsMarketReaction.symbol, func.count(NewsMarketReaction.id),
+            func.sum(case((NewsMarketReaction.status == "COMPLETE", 1), else_=0))
+        ).group_by(NewsMarketReaction.symbol)):
+            row = inventory.setdefault(symbol, {"symbol": symbol, "snapshot_count": 0, "news_count": 0,
+                "reaction_count": 0, "completed_reaction_count": 0, "latest_snapshot_at": None,
+                "latest_news_at": None})
+            row.update(reaction_count=count, completed_reaction_count=complete or 0)
+        return sorted(inventory.values(), key=lambda row: (
+            -row["news_count"], -row["snapshot_count"], row["symbol"]))
+
+    def linked_news_symbols(self):
+        rows = [row for row in self.memory_symbols() if row["news_count"]]
+        return sorted(rows, key=lambda row: (
+            -row["news_count"], -(_utc(row["latest_news_at"]).timestamp() if row["latest_news_at"] else 0)
+        ))
+
+    @staticmethod
+    def _future_return(row, price):
+        return _pct(row.close, price) if row is not None else None
+
+    def _future_performance(self, symbol: str, at: datetime, price):
+        price = _decimal(price)
+        intraday = self.db.scalars(select(Candle).where(
+            Candle.symbol == symbol, Candle.timeframe == "15m", Candle.timestamp > at,
+            Candle.timestamp <= at + timedelta(days=10)
+        ).order_by(Candle.timestamp).limit(600)).all()
+        daily = self.db.scalars(select(Candle).where(
+            Candle.symbol == symbol, Candle.timeframe == "1d", Candle.timestamp > at
+        ).order_by(Candle.timestamp).limit(5)).all()
+        one_day = daily[0] if daily else None
+        five_day = daily[4] if len(daily) >= 5 else None
+        excursion_rows = []
+        if five_day:
+            excursion_end = _utc(five_day.timestamp) + timedelta(days=1)
+            excursion_rows = [row for row in intraday if _utc(row.timestamp) <= excursion_end]
+        values = {
+            "return_15m": self._future_return(intraday[0] if intraday else None, price),
+            "return_1h": self._future_return(intraday[3] if len(intraday) >= 4 else None, price),
+            "return_1d": self._future_return(one_day, price),
+            "return_5d": self._future_return(five_day, price),
+            "mfe_5d": _pct(max((row.high for row in excursion_rows), default=None), price),
+            "mae_5d": _pct(min((row.low for row in excursion_rows), default=None), price),
+        }
+        available = sum(value is not None for value in values.values())
+        values["status"] = "COMPLETE" if available == len(values) else "PARTIAL" if available else "NOT_AVAILABLE"
+        return values
+
+    @staticmethod
+    def _decision_quality(score, return_1d):
+        if return_1d is None:
+            return "NOT_ENOUGH_DATA"
+        if score is not None and score >= 82 and return_1d > Decimal("1"):
+            return "GOOD_FOLLOW_THROUGH"
+        if score is not None and score >= 82 and return_1d < Decimal("-1"):
+            return "FALSE_POSITIVE"
+        return "NEUTRAL"
+
+    def snapshot_detail(self, symbol: str, at: datetime):
+        """Inspect persisted history only. This deliberately has no provider or AI dependency."""
+        symbol, at = symbol.upper(), _utc(at)
+        snapshot = self.snapshot_at(symbol, at)
+        recorded = isinstance(snapshot, MarketStateSnapshot)
+        snapshot_time = _utc(snapshot.timestamp) if recorded else _utc(snapshot.get("timestamp"))
+        if snapshot_time is None or (not recorded and snapshot.get("status") == "NOT_AVAILABLE"):
+            return {"snapshot": snapshot, "analysis": None, "news": [], "reactions": [],
+                "future_performance": {"return_15m": None, "return_1h": None, "return_1d": None,
+                    "return_5d": None, "mfe_5d": None, "mae_5d": None, "status": "NOT_AVAILABLE",
+                    "decision_quality": "NOT_ENOUGH_DATA"}, "status": "PARTIAL"}
+        analysis = self.db.scalar(select(Analysis).where(
+            Analysis.symbol == symbol, Analysis.signal_candle_time == snapshot_time
+        ).order_by(desc(Analysis.analyzed_at)).limit(1)) if recorded else None
+        nearby = self.db.scalars(select(NewsItem).where(
+            NewsItem.symbol == symbol,
+            NewsItem.published_at >= snapshot_time - timedelta(hours=24),
+            NewsItem.published_at <= snapshot_time + timedelta(hours=24),
+        ).order_by(NewsItem.published_at).limit(100)).all()
+        news_ids = [item.id for item in nearby]
+        reactions = self.db.scalars(select(NewsMarketReaction).where(
+            NewsMarketReaction.symbol == symbol, NewsMarketReaction.news_id.in_(news_ids)
+        ).order_by(NewsMarketReaction.news_id).limit(100)).all() if news_ids else []
+        price = snapshot.price if recorded else snapshot.get("price")
+        future = self._future_performance(symbol, snapshot_time, price)
+        score = snapshot.technical_score if recorded else snapshot.get("technical_score")
+        future["decision_quality"] = self._decision_quality(score, future["return_1d"])
+        status = snapshot.status if recorded else snapshot.get("status", "RECONSTRUCTED")
+        if recorded and analysis is None:
+            status = "PARTIAL"
+        return {"snapshot": snapshot, "analysis": analysis, "news": nearby, "reactions": reactions,
+            "future_performance": future, "status": status}
 
     def opening_context(self, symbol: str, at=None):
         at = _utc(at or datetime.now(timezone.utc))

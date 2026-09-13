@@ -1,4 +1,4 @@
-import type {Analysis,BackfillStatus,Candle,CollectionActivity,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketSnapshot,NewsHealth,NewsItem,NewsMetrics,NewsReaction,NewsSourceHealth,Portfolio,Position,ReactionQueueStatus,ScannerRunResponse,ScannerStatus,Snapshot,StrategyHealth,Trade,UnmatchedNews,WatchItem} from "@/types";
+import type {Analysis,BackfillStatus,Candle,CollectionActivity,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketMemorySymbol,MarketSnapshot,NewsHealth,NewsItem,NewsMetrics,NewsReaction,NewsSourceHealth,Portfolio,Position,ReactionQueueStatus,ScannerRunResponse,ScannerStatus,Snapshot,SnapshotDetail,StrategyHealth,Trade,UnmatchedNews,WatchItem} from "@/types";
 const API = "/api";
 
 async function get<T>(path: string): Promise<T> {
@@ -48,7 +48,10 @@ export const api = {
   marketHistory: (symbol:string) => get<MarketSnapshot[]>(`/market-history/${symbol}`),
   marketTrend: (symbol:string) => get<Array<{timestamp:string;price:number;trend?:string;structure?:string;score?:number;analysis_mode?:"LIVE"|"ANALYSIS_ONLY"}>>(`/market-history/${symbol}/trend`),
   marketSnapshot: (symbol:string,at:string) => get<MarketSnapshot>(`/market-history/${symbol}/snapshot?at=${encodeURIComponent(at)}`),
+  marketSnapshotDetail: (symbol:string,at:string) => get<SnapshotDetail>(`/market-history/${symbol}/snapshot-detail?at=${encodeURIComponent(at)}`),
   marketNews: (symbol:string) => get<NewsItem[]>(`/market-history/${symbol}/news`),
+  linkedNewsSymbols: () => get<MarketMemorySymbol[]>("/news/linked-symbols"),
+  marketMemorySymbols: () => get<MarketMemorySymbol[]>("/market-memory/symbols"),
   marketMemoryHealth: () => get<MarketMemoryHealth>("/market-memory/health"),
   backfillStatus: () => get<BackfillStatus>("/backfill/status"),
   refreshNews: async () => {const r=await fetch(`${API}/news/refresh`,{method:"POST"});if(!r.ok)throw new Error("Haber yenilenemedi");return r.json()},

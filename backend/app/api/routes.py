@@ -323,6 +323,11 @@ def news_archive(symbol:str|None=None,source:str|None=None,category:str|None=Non
     return dump(NewsService(db,config).archive(symbol,source,category,sentiment,min_importance,
         start,end,overnight_only,reaction_only,limit,reaction_complete_only))
 
+
+@router.get("/news/linked-symbols")
+def linked_news_symbols(db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).linked_news_symbols())
+
 @router.get("/news/unmatched")
 def unmatched_news(limit:int=Query(100,ge=1,le=500),db:Session=Depends(get_db)):
     return dump(NewsService(db,config).unmatched(limit))
@@ -369,6 +374,11 @@ def market_snapshot(symbol:str,at:datetime,db:Session=Depends(get_db)):
     return dump(MarketMemoryService(db,config).snapshot_at(symbol,at))
 
 
+@router.get("/market-history/{symbol}/snapshot-detail")
+def market_snapshot_detail(symbol:str,at:datetime,db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).snapshot_detail(symbol,at))
+
+
 @router.get("/market-history/{symbol}/trend")
 def market_trend(symbol:str,start:datetime|None=None,end:datetime|None=None,
     limit:int=Query(1000,ge=1,le=5000),db:Session=Depends(get_db)):
@@ -395,6 +405,11 @@ def market_history(symbol:str,start:datetime|None=None,end:datetime|None=None,
 @router.get("/market-memory/health")
 def market_memory_health(db:Session=Depends(get_db)):
     return dump(MarketMemoryService(db,config).health())
+
+
+@router.get("/market-memory/symbols")
+def market_memory_symbols(db:Session=Depends(get_db)):
+    return dump(MarketMemoryService(db,config).memory_symbols())
 
 
 @router.get("/backfill/status")

@@ -266,6 +266,90 @@ def test_db_only_candles_never_calls_external_provider(monkeypatch, db):
     assert response.status_code == 200 and response.json() == []
 
 
+def test_snapshot_detail_recorded_joins_stored_analysis_news_reaction_and_future(db):
+    at = datetime(2026, 9, 1, 10, tzinfo=timezone.utc)
+    row = analysis(at); row.ai_status = "OK"; row.ai_model = "stored-model"
+    row.ai_result = {"verdict": "CONFIRM", "summary": "stored only", "execution_authority": False}
+    db.add(row); service = MarketMemoryService(db, config()); service.record_analysis(row)
+    inside = add_news(db, at + timedelta(hours=2)); add_news(db, at + timedelta(hours=25))
+    db.add(NewsMarketReaction(news_id=inside.id, symbol="ASELS", status="COMPLETE",
+        return_1d=Decimal("2"), abnormal_return_1d=Decimal("1")))
+    for index in range(1, 41):
+        candle = add_candle(db, "ASELS", "15m", at + timedelta(minutes=15 * index), 100 + index)
+        if index == 1: candle.low = Decimal("97")
+    for index in range(1, 6): add_candle(db, "ASELS", "1d", at + timedelta(days=index), 100 + index)
+    db.commit()
+    detail = service.snapshot_detail("asels", at)
+    assert detail["status"] == "RECORDED" and detail["analysis"].ai_model == "stored-model"
+    assert [item.id for item in detail["news"]] == [inside.id] and detail["reactions"][0].status == "COMPLETE"
+    future = detail["future_performance"]
+    assert future["return_15m"] == 1 and future["return_1h"] == 4
+    assert future["return_1d"] == 1 and future["return_5d"] == 5
+    assert future["mfe_5d"] == 41 and future["mae_5d"] == -3 and future["status"] == "COMPLETE"
+    assert future["decision_quality"] == "NEUTRAL"
+
+
+def test_snapshot_detail_missing_analysis_is_partial(db):
+    at = datetime(2026, 9, 1, 10, tzinfo=timezone.utc)
+    db.add(MarketStateSnapshot(symbol="ASELS", timeframe="15m", timestamp=at, status="RECORDED",
+        price=Decimal("100"), technical_score=82, data_source="test", data_quality="VALID")); db.commit()
+    detail = MarketMemoryService(db, config()).snapshot_detail("ASELS", at)
+    assert detail["status"] == "PARTIAL" and detail["analysis"] is None
+    assert detail["future_performance"]["status"] == "NOT_AVAILABLE"
+
+
+def test_snapshot_detail_reconstructed_has_no_invented_analysis(db):
+    at = datetime(2026, 9, 11, 14, tzinfo=timezone.utc)
+    for timeframe, step in {"1d": timedelta(days=1), "1h": timedelta(hours=1), "15m": timedelta(minutes=15)}.items():
+        for index in range(90): add_candle(db, "ASELS", timeframe, at-step*(89-index), 80+index*.25, 1000+index)
+    db.commit(); detail = MarketMemoryService(db, config()).snapshot_detail("ASELS", at)
+    assert detail["status"] == "RECONSTRUCTED" and detail["snapshot"]["status"] == "RECONSTRUCTED"
+    assert detail["analysis"] is None
+
+
+def test_history_inspection_never_calls_provider_or_ai(monkeypatch, db):
+    import app.market_memory.service as module
+    at = datetime(2026, 9, 1, 10, tzinfo=timezone.utc); row = analysis(at); db.add(row)
+    service = MarketMemoryService(db, config()); service.record_analysis(row); db.commit()
+    monkeypatch.setattr(module, "analyze_frames", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("historical inspection attempted reconstruction/AI")))
+    assert service.snapshot_detail("ASELS", at)["status"] == "RECORDED"
+
+
+def test_linked_news_symbols_inventory_and_http_endpoint(db):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.routes import router
+    from app.db.session import get_db
+    at = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    first = add_news(db, at, symbol="ASELS"); add_news(db, at + timedelta(hours=1), symbol="ASELS")
+    add_news(db, at + timedelta(hours=2), symbol="THYAO")
+    db.add(NewsMarketReaction(news_id=first.id, symbol="ASELS", status="COMPLETE")); db.commit()
+    app = FastAPI(); app.include_router(router, prefix="/api"); app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as client:
+        linked = client.get("/api/news/linked-symbols")
+        inventory = client.get("/api/market-memory/symbols")
+    assert linked.status_code == 200 and [row["symbol"] for row in linked.json()] == ["ASELS", "THYAO"]
+    assert linked.json()[0]["reaction_count"] == linked.json()[0]["completed_reaction_count"] == 1
+    assert inventory.status_code == 200
+
+
+def test_snapshot_detail_http_api_is_db_only_and_returns_stored_ai(db):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.routes import router
+    from app.db.session import get_db
+    at = datetime(2026, 9, 1, 10, tzinfo=timezone.utc); row = analysis(at)
+    row.ai_status = "OK"; row.ai_result = {"verdict": "WATCH", "execution_authority": False}
+    db.add(row); MarketMemoryService(db, config()).record_analysis(row); db.commit()
+    app = FastAPI(); app.include_router(router, prefix="/api"); app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as client:
+        response = client.get("/api/market-history/ASELS/snapshot-detail", params={"at": at.isoformat()})
+    payload = response.json()
+    assert response.status_code == 200 and payload["snapshot"]["status"] == "RECORDED"
+    assert payload["analysis"]["ai_result"]["verdict"] == "WATCH"
+
+
 def test_market_closed_embedded_cycle_runs_news_without_orders(monkeypatch, db):
     import app.services.embedded_worker as module
     calls = {"news": 0, "orders": 0}

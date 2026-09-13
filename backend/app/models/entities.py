@@ -46,6 +46,7 @@ class Candle(Base):
 
 class Analysis(Base):
     __tablename__ = "analyses"
+    __table_args__ = (Index("ix_analyses_symbol_signal_candle_time", "symbol", "signal_candle_time"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16), index=True)
     analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
@@ -371,6 +372,7 @@ class MarketStateSnapshot(Base):
     __table_args__ = (
         UniqueConstraint("symbol", "timeframe", "timestamp", name="uq_market_snapshot_identity"),
         Index("ix_market_snapshot_symbol_timeframe_timestamp", "symbol", "timeframe", "timestamp"),
+        Index("ix_market_snapshot_symbol_timestamp", "symbol", "timestamp"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16), index=True)
