@@ -16,7 +16,7 @@ export function PriceChart({candles,levels,swings=[],entries=[],exits=[],news=[]
   const toggle=(key:Overlay)=>setOverlays(current=>{const next=new Set(current);if(next.has(key))next.delete(key);else next.add(key);return next});
   useEffect(()=>{
     if(!ref.current||!candles.length)return;
-    const chart=createChart(ref.current,{height:pane==="PRICE"?430:560,layout:{background:{type:ColorType.Solid,color:"#111821"},textColor:"#9aa7b7"},grid:{vertLines:{color:"#1c2631"},horzLines:{color:"#1c2631"}},rightPriceScale:{borderColor:"#26313d"},timeScale:{borderColor:"#26313d",timeVisible:true},handleScroll:true,handleScale:true});
+    const chart=createChart(ref.current,{height:pane==="PRICE"?430:560,layout:{background:{type:ColorType.Solid,color:"#111821"},textColor:"#9aa7b7"},grid:{vertLines:{color:"#1c2631"},horzLines:{color:"#1c2631"}},rightPriceScale:{borderColor:"#26313d"},timeScale:{borderColor:"#26313d",timeVisible:true,rightOffset:8},handleScroll:true,handleScale:true});
     const time=(value:string)=>(new Date(value).getTime()/1000) as Time;
     const candle=chart.addSeries(CandlestickSeries,{upColor:"#14d99a",downColor:"#ef5b64",wickUpColor:"#14d99a",wickDownColor:"#ef5b64",borderVisible:false});
     candle.setData(candles.map(c=>({time:time(c.timestamp),open:c.open,high:c.high,low:c.low,close:c.close})));
