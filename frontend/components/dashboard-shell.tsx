@@ -1626,7 +1626,11 @@ function MarketMemoryView({symbols,health,backfill}:{symbols:string[];health?:Ma
   const [timeline,setTimeline]=useState<MarketSnapshot[]>([]);
   const [archive,setArchive]=useState<NewsItem[]>([]);
   const [study,setStudy]=useState<Array<{category:string;news_count:number;avg_return_1d?:number;positive_rate?:number}>>([]);
-  useEffect(()=>{void Promise.all([api.marketHistory(symbol),api.marketNews(symbol),api.eventStudy()]).then(([snapshots,items,eventStudy])=>{setTimeline(snapshots);setArchive(items);setStudy(eventStudy)}).catch(()=>{setTimeline([]);setArchive([]);setStudy([])})},[symbol]);
+  useEffect(()=>{
+    let active=true;
+    void Promise.all([api.marketHistory(symbol),api.marketNews(symbol),api.eventStudy()]).then(([snapshots,items,eventStudy])=>{if(active){setTimeline(snapshots);setArchive(items);setStudy(eventStudy)}}).catch(()=>{if(active){setTimeline([]);setArchive([]);setStudy([])}});
+    return()=>{active=false};
+  },[symbol]);
   useEffect(()=>{
     let active=true;
     const end=anchorAt||undefined,base=end?new Date(end):new Date(),days=range==="1D"?1:range==="5D"?5:range==="1M"?30:range==="3M"?90:0;
