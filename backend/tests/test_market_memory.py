@@ -129,9 +129,11 @@ def test_snapshot_persistence_and_duplicate_guard(db):
 def test_history_and_trend_are_chronological(db):
     service = MarketMemoryService(db, config()); now = datetime.now(timezone.utc)
     for offset in (2, 1, 0):
-        row = analysis(now - timedelta(hours=offset)); db.add(row); service.record_analysis(row)
+        row = analysis(now - timedelta(hours=offset)); row.details["analysis_mode"] = "ANALYSIS_ONLY"
+        db.add(row); service.record_analysis(row)
     db.commit(); trend = service.trend("asels")
     assert len(trend) == 3 and trend[0]["timestamp"] < trend[-1]["timestamp"]
+    assert all(item["analysis_mode"] == "ANALYSIS_ONLY" for item in trend)
 
 
 def test_snapshot_not_available_without_historical_candles(db):
@@ -223,6 +225,45 @@ def test_history_and_archive_http_apis(db):
         archive = client.get("/api/news/archive?symbol=ASELS&min_importance=80")
     assert history.status_code == 200 and len(history.json()) == 1
     assert archive.status_code == 200 and len(archive.json()) == 1
+
+
+def test_historical_candles_api_filters_range_limit_and_reports_source(db):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.routes import router
+    from app.db.session import get_db
+    base = datetime(2026, 9, 11, 10)
+    for index in range(5):
+        add_candle(db, "USHOL", "15m", base + timedelta(minutes=15 * index), 100 + index)
+    db.commit()
+    app = FastAPI(); app.include_router(router, prefix="/api")
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as client:
+        response = client.get("/api/candles/USHOL", params={"timeframe": "15m", "limit": 2,
+            "start": (base + timedelta(minutes=15)).isoformat(),
+            "end": (base + timedelta(minutes=60)).isoformat(), "db_only": "true"})
+        invalid = client.get("/api/candles/USHOL", params={"start": "2026-09-12T00:00:00",
+            "end": "2026-09-11T00:00:00", "db_only": "true"})
+    assert response.status_code == 200
+    assert [item["close"] for item in response.json()] == [103.0, 104.0]
+    assert all(item["source"] == "test" for item in response.json())
+    assert invalid.status_code == 422
+
+
+def test_db_only_candles_never_calls_external_provider(monkeypatch, db):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    import app.api.routes as routes
+    from app.db.session import get_db
+    class ForbiddenScanner:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError("DB-only historical request reached the external provider")
+    monkeypatch.setattr(routes, "BistScanner", ForbiddenScanner)
+    app = FastAPI(); app.include_router(routes.router, prefix="/api")
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as client:
+        response = client.get("/api/candles/USHOL?timeframe=5m&db_only=true")
+    assert response.status_code == 200 and response.json() == []
 
 
 def test_market_closed_embedded_cycle_runs_news_without_orders(monkeypatch, db):

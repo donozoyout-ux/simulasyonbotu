@@ -414,11 +414,15 @@ def run_backfill(batch_size:int|None=Query(None,ge=1,le=5),db:Session=Depends(ge
 
 @router.get("/candles/{symbol}")
 def candles(symbol: str, timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$"),
-    limit: int = Query(200, ge=1, le=1000),at:datetime|None=None,db: Session = Depends(get_db)):
+    limit: int = Query(200, ge=1, le=1000),at:datetime|None=None,start:datetime|None=None,
+    end:datetime|None=None,db_only:bool=False,db: Session = Depends(get_db)):
+    if start and end and start>end:raise HTTPException(422,"start, end değerinden sonra olamaz")
     stmt=select(Candle).where(Candle.symbol == symbol.upper(), Candle.timeframe == timeframe)
+    if start:stmt=stmt.where(Candle.timestamp>=start)
+    if end:stmt=stmt.where(Candle.timestamp<=end)
     if at:stmt=stmt.where(Candle.timestamp<=at)
     rows = db.scalars(stmt.order_by(desc(Candle.timestamp)).limit(limit)).all()
-    if timeframe=="5m" and at is None and len(rows)<min(limit,35):
+    if timeframe=="5m" and at is None and not db_only and len(rows)<min(limit,35):
         try:
             fetched=BistScanner(db,config).provider.get_candles(symbol.upper(),timeframe,max(limit,220))
             existing={row.timestamp for row in rows}
@@ -429,7 +433,7 @@ def candles(symbol: str, timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$
         except Exception as exc:
             if not rows:raise HTTPException(503,f"5M veri alınamadı: {type(exc).__name__}") from None
     ordered=list(reversed(rows));series=indicator_series(ordered)
-    return dump([{**{key:getattr(row,key) for key in ("timestamp","open","high","low","close","volume")},
+    return dump([{**{key:getattr(row,key) for key in ("timestamp","open","high","low","close","volume","source")},
         "indicators":series[index]} for index,row in enumerate(ordered)])
 
 

@@ -135,7 +135,8 @@ class MarketMemoryService:
 
     def trend(self, symbol: str, start=None, end=None, limit=1000):
         return [{"timestamp": row.timestamp, "price": row.price, "trend": row.trend,
-                 "structure": row.market_structure, "score": row.technical_score, "bos": row.bos, "choch": row.choch}
+                 "structure": row.market_structure, "score": row.technical_score, "bos": row.bos, "choch": row.choch,
+                 "analysis_mode":row.analysis_mode}
                 for row in self.history(symbol, start, end, limit)]
 
     def news(self, symbol: str, start=None, end=None, limit=500):

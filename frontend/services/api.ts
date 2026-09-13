@@ -18,6 +18,11 @@ export const api = {
   decisions: () => get<Decision[]>("/decisions"),
   candles: (symbol: string, timeframe = "15m", at?:string) =>
     get<Candle[]>(`/candles/${symbol}?timeframe=${timeframe}${at?`&at=${encodeURIComponent(at)}`:""}`),
+  historicalCandles: (symbol:string,timeframe="15m",options:{limit?:number;start?:string;end?:string;at?:string}={}) => {
+    const params=new URLSearchParams({timeframe,limit:String(options.limit??500),db_only:"true"});
+    if(options.start)params.set("start",options.start);if(options.end)params.set("end",options.end);if(options.at)params.set("at",options.at);
+    return get<Candle[]>(`/candles/${symbol}?${params.toString()}`);
+  },
   dataHealth: () => get<DataHealth>("/data-health"),
   telegramStatus: () => get<{enabled:boolean;configured:boolean;signal_alerts:boolean}>("/telegram/status"),
   strategyHealth: () => get<StrategyHealth>("/strategy-health"),
@@ -41,7 +46,7 @@ export const api = {
   recentReactions: () => get<NewsReaction[]>("/news/reactions/recent"),
   collectionActivity: () => get<CollectionActivity[]>("/data-collection/activity"),
   marketHistory: (symbol:string) => get<MarketSnapshot[]>(`/market-history/${symbol}`),
-  marketTrend: (symbol:string) => get<Array<{timestamp:string;price:number;trend?:string;structure?:string;score?:number}>>(`/market-history/${symbol}/trend`),
+  marketTrend: (symbol:string) => get<Array<{timestamp:string;price:number;trend?:string;structure?:string;score?:number;analysis_mode?:"LIVE"|"ANALYSIS_ONLY"}>>(`/market-history/${symbol}/trend`),
   marketSnapshot: (symbol:string,at:string) => get<MarketSnapshot>(`/market-history/${symbol}/snapshot?at=${encodeURIComponent(at)}`),
   marketNews: (symbol:string) => get<NewsItem[]>(`/market-history/${symbol}/news`),
   marketMemoryHealth: () => get<MarketMemoryHealth>("/market-memory/health"),
