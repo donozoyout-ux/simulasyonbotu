@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { api } from "@/services/api";
 import { deriveDashboardStatus, preserveSuccessfulState, type DashboardSystemMode } from "@/services/dashboard-status";
+import { DASHBOARD_TABS, type DashboardView as View } from "@/services/dashboard-navigation";
 import type {
   Analysis,
   Candle,
@@ -50,31 +51,8 @@ import type {
 } from "@/types";
 import { PriceChart } from "./price-chart";
 
-type View =
-  | "Genel Bakış"
-  | "Takip Listesi"
-  | "Tarama Merkezi"
-  | "Grafik Analizi"
-  | "Pozisyonlar"
-  | "İşlemler"
-  | "Bot Aktivitesi"
-  | "Haberler / KAP"
-  | "Piyasa Hafızası"
-  | "Veri Toplama Merkezi"
-  | "Ayarlar";
-const nav: [View, React.ElementType][] = [
-  ["Genel Bakış", BarChart3],
-  ["Takip Listesi", ListFilter],
-  ["Tarama Merkezi", RefreshCw],
-  ["Grafik Analizi", CandlestickChart],
-  ["Pozisyonlar", BriefcaseBusiness],
-  ["İşlemler", CircleDollarSign],
-  ["Bot Aktivitesi", Activity],
-  ["Haberler / KAP", Newspaper],
-  ["Piyasa Hafızası", Database],
-  ["Veri Toplama Merkezi", CloudDownload],
-  ["Ayarlar", Settings],
-];
+const navIcons:Record<View,React.ElementType>={"Ana Sayfa":BarChart3,"Tarayıcı":RefreshCw,
+  "Grafik & Analiz":CandlestickChart,"Piyasa Hafızası":Database,"Sistem":Settings};
 const seedPortfolio: Portfolio = {
   initial_balance: 5000,
   cash_balance: 5000,
@@ -121,7 +99,7 @@ const fmtDate = (v: string) =>
 
 export function DashboardShell() {
   const scanInFlight = useRef(false);
-  const [view, setView] = useState<View>("Genel Bakış"),
+  const [view, setView] = useState<View>("Ana Sayfa"),
     [portfolio, setPortfolio] = useState(seedPortfolio),
     [forward, setForward] = useState<ForwardStatus>(),
     [analyses, setAnalyses] = useState<Analysis[]>([]),
@@ -148,6 +126,7 @@ export function DashboardShell() {
     [newsMetrics,setNewsMetrics]=useState<NewsMetrics>(),
     [sourceHealth,setSourceHealth]=useState<NewsSourceHealth[]>([]),
     [reactionQueue,setReactionQueue]=useState<ReactionQueueStatus>(),
+    [telegramStatus,setTelegramStatus]=useState<{enabled:boolean;configured:boolean;signal_alerts:boolean;commands_enabled?:boolean;command_poller_running?:boolean;data_health_alerts?:boolean}>(),
     [collectionActivity,setCollectionActivity]=useState<CollectionActivity[]>([]),
     [unmatchedNews,setUnmatchedNews]=useState<UnmatchedNews[]>([]),
     [loading, setLoading] = useState(false),
@@ -164,7 +143,7 @@ export function DashboardShell() {
       slippage_rate: 0.0005,
     });
   const load = useCallback(async () => {
-    const [be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf]=await Promise.all([
+    const [be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf,tg]=await Promise.all([
       isolated("Backend Health",api.health()),isolated("Portfolio",api.portfolio()),
       isolated("Scanner Results",api.analyses()),isolated("Watchlist",api.watchlist()),
       isolated("Positions",api.positions()),isolated("Trades",api.trades()),
@@ -173,14 +152,16 @@ export function DashboardShell() {
       isolated("Strategy Health",api.strategyHealth()),isolated("Forward Status",api.forwardStatus()),
       isolated("Scanner Status",api.scannerStatus()),isolated("News Health",api.newsHealth()),
       isolated("Market Memory",api.marketMemoryHealth()),isolated("Backfill",api.backfillStatus()),
+      isolated("Telegram",api.telegramStatus()),
     ]);
     setPortfolio(current=>preserveSuccessfulState(current,p));if(fw.ok)setForward(fw.value);if(w.ok)setWatch(w.value);
     if(pos.ok)setPositions(pos.value);if(t.ok)setTrades(t.value);if(d.ok)setDecisions(d.value);
     if(h.ok)setHistory(h.value);if(s.ok)setSettings(s.value);if(dh.ok)setHealth(dh.value);
     if(sh.ok)setStrategyHealth(sh.value);if(ss.ok)setScannerStatus(ss.value);
     if(nh.ok)setNewsHealth(nh.value);if(mh.ok)setMemoryHealth(mh.value);if(bf.ok)setBackfill(bf.value);
+    if(tg.ok)setTelegramStatus(tg.value);
     if(a.ok){setAnalyses(a.value);setSelected(current=>a.value.some(x=>x.symbol===current)?current:a.value[0]?.symbol||"")}
-    const results=[be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf];
+    const results=[be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf,tg];
     const failures=results.filter((result):result is {ok:false;label:string}=>!result.ok).map(result=>result.label);
     const nextMode=deriveDashboardStatus({backendHealthOk:be.ok,failedModules:failures.filter(x=>x!=="Backend Health"),dataHealth:dh.ok?dh.value:undefined});
     setFailedModules(failures);setMode(nextMode);
@@ -209,7 +190,7 @@ export function DashboardShell() {
     }catch{setMessage("Veri toplama metrikleri geçici olarak alınamadı")}
   },[]);
   useEffect(()=>{
-    if(view!=="Veri Toplama Merkezi")return;
+    if(view!=="Sistem")return;
     void Promise.resolve().then(loadCollection);const timer=window.setInterval(()=>void loadCollection(),30_000);
     return()=>window.clearInterval(timer);
   },[view,loadCollection]);
@@ -264,7 +245,9 @@ export function DashboardShell() {
           </div>
         </div>
         <nav>
-          {nav.map(([label, Icon]) => (
+          {DASHBOARD_TABS.map((label) => {
+            const Icon=navIcons[label];
+            return (
             <button
               key={label}
               className={view === label ? "active" : ""}
@@ -273,7 +256,7 @@ export function DashboardShell() {
               <Icon size={18} />
               <span>{label}</span>
             </button>
-          ))}
+          )})}
         </nav>
         <div className="risk-card">
           <ShieldCheck size={18} />
@@ -342,50 +325,35 @@ export function DashboardShell() {
           </span>
         </div>
         {mode!=="LIVE PAPER"&&<div className={`diagnostics-banner ${mode.toLowerCase().replaceAll(" ","-")}`}><div><b>{mode}</b><span>{message}</span></div>{failedModules.length>0&&<ul>{failedModules.slice(0,6).map(item=><li key={item}>{item}</li>)}</ul>}</div>}
-        {view === "Genel Bakış" && (
-          <Overview
+        {view === "Ana Sayfa" && (
+          <HomeView
             portfolio={portfolio}
             forward={forward}
             analyses={analyses}
             positions={positions}
             watch={watch}
-            history={history}
             health={health}
-            strategyHealth={strategyHealth}
-            winRate={winRate}
-            profitFactor={profitFactor}
+            scannerStatus={scannerStatus}
+            news={news}
+            decisions={decisions}
+            mode={mode}
             onSelect={(s) => {
               setSelected(s);
-              setView("Grafik Analizi");
+              setView("Grafik & Analiz");
             }}
-            newsHealth={newsHealth}
-            memoryHealth={memoryHealth}
+            onOpenScanner={()=>setView("Tarayıcı")}
+            onOpenSystem={()=>setView("Sistem")}
           />
         )}
-        {view === "Takip Listesi" && (
-          <Watchlist
-            rows={watch}
-            analyses={analyses}
-            status={scannerStatus}
-            onSelect={(s) => {
-              setSelected(s);
-              setView("Grafik Analizi");
-            }}
-          />
+        {view === "Tarayıcı" && (
+          <div className="section-stack">
+            <ScannerCenter status={scannerStatus} analyses={analyses} loading={loading} onScan={scan}
+              onSelect={(s)=>{setSelected(s);setView("Grafik & Analiz")}} />
+            <Watchlist rows={watch} analyses={analyses} status={scannerStatus}
+              onSelect={(s)=>{setSelected(s);setView("Grafik & Analiz")}} />
+          </div>
         )}
-        {view === "Tarama Merkezi" && (
-          <ScannerCenter
-            status={scannerStatus}
-            analyses={analyses}
-            loading={loading}
-            onScan={scan}
-            onSelect={(s) => {
-              setSelected(s);
-              setView("Grafik Analizi");
-            }}
-          />
-        )}
-        {view === "Grafik Analizi" && (
+        {view === "Grafik & Analiz" && (
           <AnalysisViewGroq
             analyses={analyses}
             chosen={chosen}
@@ -401,62 +369,103 @@ export function DashboardShell() {
             setHistoryAt={setHistoryAt}
           />
         )}
-        {view === "Pozisyonlar" && <Positions rows={positions} />}{" "}
-        {view === "İşlemler" && <Trades rows={trades} />}{" "}
-        {view === "Bot Aktivitesi" && <ActivityFeed rows={decisions} />}{" "}
-        {view === "Haberler / KAP" && (
-          <NewsPanel rows={news} health={newsHealth} onRefresh={async()=>{await api.refreshNews();setNews(await api.newsArchive());await load()}} />
-        )}{" "}
         {view === "Piyasa Hafızası" && (
           <MarketMemoryView symbols={analyses.map(item=>item.symbol)} health={memoryHealth} backfill={backfill}/>
         )}{" "}
-        {view === "Veri Toplama Merkezi" && (
-          <DataCollectionCenter metrics={newsMetrics} sources={sourceHealth} reactions={reactionQueue}
-            memory={memoryHealth} backfill={backfill} activity={collectionActivity} unmatched={unmatchedNews}/>
-        )}{" "}
-        {view === "Ayarlar" && (
-          <SettingsView
-            values={settings}
-            setValues={setSettings}
-            onSave={async () => {
-              try {
-                await api.saveSettings(settings);
-                setMessage("Ayarlar kaydedildi");
-              } catch {
-                setMessage(
-                  "Aktif run sırasında kritik strateji ayarları değiştirilemez",
-                );
-              }
-            }}
-            onTelegramTest={async () => {
-              try {
-                await api.telegramTest();
-                setMessage("Telegram test mesajı gönderildi");
-              } catch {
-                setMessage("Telegram test başarısız — Render env ayarlarını kontrol et");
-              }
-            }}
-            onReset={async () => {
-              if (
-                window.prompt("Onay için RESET PAPER PORTFOLIO yazın") !==
-                "RESET PAPER PORTFOLIO"
-              )
-                return;
-              try {
-                await api.resetPaper();
-                await load();
-                setMessage(
-                  "Eski run arşivlendi; yeni 5.000 TL forward test başlatıldı",
-                );
-              } catch {
-                setMessage("Forward test sıfırlanamadı");
-              }
-            }}
-          />
+        {view === "Sistem" && (
+          <SystemView mode={mode} health={health} forward={forward} telegram={telegramStatus}
+            newsHealth={newsHealth} memory={memoryHealth} backfill={backfill}
+            metrics={newsMetrics} sources={sourceHealth} reactions={reactionQueue}
+            activity={collectionActivity} unmatched={unmatchedNews} strategyHealth={strategyHealth}
+            decisions={decisions} trades={trades} history={history} portfolio={portfolio}
+            winRate={winRate} profitFactor={profitFactor} news={news} settings={settings}
+            setSettings={setSettings}
+            onSave={async()=>{try{await api.saveSettings(settings);setMessage("Ayarlar kaydedildi")}catch{setMessage("Aktif run sırasında kritik strateji ayarları değiştirilemez")}}}
+            onTelegramTest={async()=>{try{await api.telegramTest();setMessage("Telegram test mesajı gönderildi")}catch{setMessage("Telegram test başarısız — Render env ayarlarını kontrol et")}}}
+            onReset={async()=>{if(window.prompt("Onay için RESET PAPER PORTFOLIO yazın")!=="RESET PAPER PORTFOLIO")return;try{await api.resetPaper();await load();setMessage("Eski run arşivlendi; yeni 5.000 TL forward test başlatıldı")}catch{setMessage("Forward test sıfırlanamadı")}}}
+            onRefreshNews={async()=>{await api.refreshNews();setNews(await api.newsArchive());await load()}} />
         )}
       </main>
     </div>
   );
+}
+
+function HomeView({portfolio,forward,analyses,positions,watch,health,scannerStatus,news,decisions,mode,onSelect,onOpenScanner,onOpenSystem}:{
+  portfolio:Portfolio;forward?:ForwardStatus;analyses:Analysis[];positions:Position[];watch:WatchItem[];
+  health:DataHealth;scannerStatus?:ScannerStatus;news:NewsItem[];decisions:Decision[];mode:DashboardSystemMode;
+  onSelect:(symbol:string)=>void;onOpenScanner:()=>void;onOpenSystem:()=>void;
+}){
+  const stats=scannerStatus?.score_stats;
+  const important=[
+    ...news.filter(item=>(item.ai_importance??0)>=80).map(item=>({id:`news-${item.id}`,at:item.published_at,
+      title:item.title,meta:`${item.symbol||"BIST"} • ${item.source} • önem ${item.ai_importance}`,symbol:item.symbol})),
+    ...decisions.filter(item=>/(BUY|SELL|SIGNAL|ERROR)/.test(`${item.category} ${item.decision}`)).map(item=>({
+      id:`decision-${item.id}`,at:item.created_at,title:item.reason,meta:`${item.symbol||"SYSTEM"} • ${item.decision}`,symbol:item.symbol})),
+  ].sort((a,b)=>new Date(b.at).getTime()-new Date(a.at).getTime()).slice(0,3);
+  const cards=[
+    {label:"Portföy",value:money(portfolio.portfolio_value),meta:`Nakit ${money(portfolio.cash_balance)} • K/Z ${money(portfolio.total_pnl)}`,icon:WalletCards},
+    {label:"Açık Pozisyon",value:String(portfolio.open_positions),meta:`Yatırım ${money(portfolio.invested_value)}`,icon:Target},
+    {label:"Son Tarama",value:String(stats?.highest??analyses[0]?.score??0),meta:`En yüksek skor • ${health.valid_symbols} geçerli / ${health.failed_symbols} hata`,icon:RefreshCw},
+    {label:"Adaylar",value:String(scannerStatus?.watchlist_count??watch.length),meta:`70+: ${stats?.above_watchlist??0} • 82+: ${stats?.above_entry??0}`,icon:ListFilter},
+  ];
+  return <div className="home-view">
+    <section className="metric-grid compact-metrics">{cards.map(card=><article className="metric" key={card.label}><div><span>{card.label}</span><b>{card.value}</b><small>{card.meta}</small></div><card.icon size={19}/></article>)}</section>
+    <section className="home-summary-grid">
+      <article className="panel system-summary"><PanelTitle title="Sistem Durumu" sub="Veri, worker ve çalışma modu tek görünümde"/>
+        <div className="system-status-line"><span className={`status-orb ${mode.toLowerCase().replaceAll(" ","-")}`}/><div><b>{mode}</b><small>{health.provider} • {forward?.market_status||"MARKET CLOSED"} • worker {forward?.worker?.embedded?"ACTIVE":"OFF"}</small></div></div>
+        <div className="summary-actions"><button onClick={onOpenSystem}>Sistem detayları</button><button onClick={onOpenScanner}>Tarayıcıyı aç</button></div>
+      </article>
+      <article className="panel important-events"><PanelTitle title="Son 3 Önemli Event" sub="Sinyal, işlem, hata ve yüksek önem haberleri"/>
+        {important.length?<div className="compact-events">{important.map(item=><button key={item.id} onClick={()=>item.symbol&&onSelect(item.symbol)} disabled={!item.symbol}><time>{fmtDate(item.at)}</time><b>{item.title}</b><span>{item.meta}</span></button>)}</div>:<Empty icon={Activity} title="Önemli event yok" text="Yeni sinyal, işlem veya 80+ önem haberi burada görünür."/>}
+      </article>
+    </section>
+    <Positions rows={positions}/>
+  </div>
+}
+
+function Collapsible({title,summary,children}:{title:string;summary:string;children:React.ReactNode}){
+  return <details className="system-detail"><summary><span><b>{title}</b><small>{summary}</small></span><i>+</i></summary><div className="system-detail-body">{children}</div></details>
+}
+
+function SystemView({mode,health,forward,telegram,newsHealth,memory,backfill,metrics,sources,reactions,activity,unmatched,strategyHealth,decisions,trades,history,portfolio,winRate,profitFactor,news,settings,setSettings,onSave,onTelegramTest,onReset,onRefreshNews}:{
+  mode:DashboardSystemMode;health:DataHealth;forward?:ForwardStatus;telegram?:{enabled:boolean;configured:boolean;signal_alerts:boolean;commands_enabled?:boolean;command_poller_running?:boolean;data_health_alerts?:boolean};newsHealth?:NewsHealth;memory?:MarketMemoryHealth;backfill?:BackfillStatus;metrics?:NewsMetrics;sources:NewsSourceHealth[];reactions?:ReactionQueueStatus;activity:CollectionActivity[];unmatched:UnmatchedNews[];strategyHealth:StrategyHealth;decisions:Decision[];trades:Trade[];history:Snapshot[];portfolio:Portfolio;winRate:number;profitFactor:number;news:NewsItem[];settings:Record<string,number>;setSettings:(value:Record<string,number>)=>void;onSave:()=>void;onTelegramTest:()=>void;onReset:()=>void;onRefreshNews:()=>Promise<void>;
+}){
+  const collectionStatus=!metrics&&!memory&&!backfill?"NOT AVAILABLE":sources.some(item=>item.enabled&&["ERROR","WAF_BLOCKED","RATE_LIMITED"].includes(item.status))?"DEGRADED":"RUNNING";
+  return <div className="system-view">
+    <article className="panel unified-health"><PanelTitle title="Sistem Durumu" sub="Operasyonel sağlık tek kartta"/>
+      <div className="unified-health-grid">
+        <div><span>Sistem</span><b>{mode}</b><small>Backend bağlı</small></div>
+        <div><span>Data Health</span><b>{health.system_status||health.status}</b><small>{health.valid_symbols} valid • {health.failed_symbols} failed</small></div>
+        <div><span>Telegram</span><b>{telegram?.configured?"CONFIGURED":"NOT CONFIGURED"}</b><small>Commands {telegram?.command_poller_running?"RUNNING":"STOPPED"}</small></div>
+        <div><span>News Collection</span><b>{newsHealth?.status||"NO DATA"}</b><small>{newsHealth?.last_24h||0} haber / 24s</small></div>
+        <div><span>Market Memory</span><b>{memory?.status||"NO DATA"}</b><small>{memory?.snapshot_count||0} snapshot • {memory?.reaction_count||0} reaction</small></div>
+        <div><span>Worker</span><b>{forward?.worker?.embedded?"ACTIVE":"INACTIVE"}</b><small>{forward?.worker?.current_cadence_minutes??"—"} dk cadence</small></div>
+        <div><span>Backfill</span><b>{backfill?.status||"NO DATA"}</b><small>{backfill?.progress_pct||0}% complete</small></div>
+        <div><span>Veri Toplama</span><b>{collectionStatus}</b><small>{sources.length} kaynak izleniyor</small></div>
+      </div>
+    </article>
+    <SettingsView values={settings} setValues={setSettings} onSave={onSave} onTelegramTest={onTelegramTest} onReset={onReset}/>
+    <div className="system-details">
+      <Collapsible title="Veri Toplama" summary={`${metrics?.total_news||0} haber • ${activity.length} son işlem`}>
+        <CollectionOverview metrics={metrics} activity={activity}/>
+      </Collapsible>
+      <Collapsible title="Haber Kaynakları" summary={`${sources.length} kaynak • ${news.length} arşiv kaydı`}>
+        <SourceHealthTable sources={sources}/><NewsPanel rows={news} health={newsHealth} compactHealth onRefresh={onRefreshNews}/>
+      </Collapsible>
+      <Collapsible title="Backfill" summary={`${backfill?.progress_pct||0}% • ${backfill?.remaining_symbols||0} sembol kaldı`}>
+        <BackfillDetails backfill={backfill}/>
+      </Collapsible>
+      <Collapsible title="Reaction Queue" summary={`${reactions?.complete||0}/${reactions?.total||0} tamamlandı`}>
+        <ReactionDetails reactions={reactions}/>
+      </Collapsible>
+      <Collapsible title="Strategy Health" summary={strategyHealth.status}><StrategyHealthPanel health={strategyHealth}/></Collapsible>
+      <Collapsible title="Forward Run" summary={`${forward?.run_id||"NO RUN"} • ${forward?.status||"UNKNOWN"}`}>
+        <ForwardRunDetails forward={forward} history={history} portfolio={portfolio} winRate={winRate} profitFactor={profitFactor}/><Trades rows={trades}/>
+      </Collapsible>
+      <Collapsible title="Decision Logs" summary={`${decisions.length} kayıt`}><ActivityFeed rows={decisions}/></Collapsible>
+      <Collapsible title="Unmatched News" summary={`${unmatched.length} eşleşmeyen haber`}><UnmatchedNewsTable rows={unmatched}/></Collapsible>
+    </div>
+  </div>
 }
 
 function Overview({
@@ -1021,7 +1030,7 @@ function Watchlist({
           <ListFilter size={18} />
           <span>
             <b>Henüz 70+ skorlu aday yok.</b>
-            Tarama yapılmıyor anlamına gelmez; tüm taranan hisseleri ve eleme nedenlerini Tarama Merkezi’nde görebilirsin.
+            Tarama yapılmıyor anlamına gelmez; tüm taranan hisseleri ve eleme nedenlerini Tarayıcı bölümünde görebilirsin.
           </span>
         </div>
       ) : null}
@@ -1656,6 +1665,32 @@ function MarketMemoryView({symbols,health,backfill}:{symbols:string[];health?:Ma
   return <div className="memory-layout"><article className="panel memory-price-panel"><div className="memory-mode"><b>{detail?"HISTORICAL INSPECTION":"LIVE MEMORY"}</b><span>DB ONLY • provider çağrısı yok</span></div><div className="chart-head"><div><b>{symbol} • {timeframe.toUpperCase()}</b><span>Gerçek historical OHLC • DB-first</span></div><select value={symbol} onChange={event=>changeSymbol(event.target.value)}>{filteredSymbols.map(item=><option key={item}>{item}</option>)}</select></div><div className="memory-filters">{[["ALL","TÜMÜ"],["NEWS","HABERLİ"],["SNAPSHOT","SNAPSHOT VAR"],["REACTION","REACTION VAR"]].map(([value,label])=><button key={value} className={filter===value?"active":""} onClick={()=>applyFilter(value)}>{label}</button>)}</div><div className="memory-header-stats"><div><span>Latest Price</span><b>{latestCandle?money(latestCandle.close):latestSnapshot?.price!=null?money(latestSnapshot.price):"—"}</b></div><div><span>Snapshots</span><b>{health?.snapshot_count??timeline.length}</b></div><div><span>Linked News</span><b>{linked}</b></div><div><span>Completed Reactions</span><b>{completed}</b></div><div><span>Recorded</span><b>{health?.recorded_count??0}</b></div><div><span>Reconstructed</span><b>{health?.reconstructed_count??0}</b></div><div><span>Candles loaded</span><b>{candles.length}</b></div><div><span>Data source</span><b>{source}</b></div></div><div className="memory-controls"><div className="timeframes">{["5m","15m","1h","1d"].map(value=><button key={value} className={timeframe===value?"active":""} onClick={()=>setMemoryTimeframe(value)}>{value.toUpperCase()}</button>)}</div><div className="timeframes">{[["1D","1G"],["5D","5G"],["1M","1A"],["3M","3A"],["ALL","TÜMÜ"]].map(([value,label])=><button key={value} className={range===value?"active":""} onClick={()=>setRange(value)}>{label}</button>)}</div>{anchorAt&&<button className="pause-control" onClick={()=>{setAnchorAt("");setDetail(undefined);setSelectedNews(undefined)}}>Güncele dön</button>}</div>{candleLoading?<div className="chart-placeholder"><RefreshCw className="spin"/><b>Historical candles yükleniyor...</b></div>:candleError?<div className="chart-placeholder"><CandlestickChart/><b>Candle verisi alınamadı</b><span>{candleError}</span></div>:candles.length?<PriceChart candles={candles} levels={levels} news={chartNews} snapshots={chartSnapshots} focusTime={anchorAt} onNewsSelect={inspectNews} onSnapshotSelect={inspectSnapshot}/>:<div className="chart-placeholder"><CandlestickChart/><b>Bu sembol/timeframe için historical candle bulunamadı.</b><span>Grafik yalnızca Candle tablosundaki gerçek OHLC verisini gösterir.</span></div>}<h3>Score history / snapshot timeline {timelineLoading?"• yükleniyor":timelineError?`• ${timelineError}`:""}</h3><div className="memory-timeline">{timeline.length?timeline.map(item=><button className={detail?.snapshot.timestamp===item.timestamp?"selected":""} key={item.id??item.timestamp} onClick={()=>inspectSnapshot(item)}><time>{fmtDate(item.timestamp)}</time><b>{item.price!=null?money(item.price):"—"}</b><span>skor {item.technical_score??"—"} • {item.trend||"—"} • {item.market_structure||"—"} • {item.analysis_mode||"—"}</span></button>):!timelineLoading&&<span>Snapshot henüz yok; historical candle grafiği bağımsız olarak görüntülenir.</span>}</div></article><div className="memory-side"><HistoricalInspector detail={detail} selectedNews={selectedNews} selectedReaction={reactions.find(row=>row.news_id===selectedNews?.id)} onNewsSelect={inspectNews} loading={detailLoading} error={detailError}/><aside className="panel"><PanelTitle title="Backfill & Arşiv" sub="Cursor tabanlı, tekrar başlatılabilir"/><div className="health-row">{backfill?.tasks.map(item=><span key={item.task}><b>{item.task}</b> {item.status} • cursor {item.cursor} • {item.processed_items} işlendi</span>)}</div><h3>{symbol} haber zaman çizgisi {newsLoading?"• yükleniyor":newsError?`• ${newsError}`:""}</h3><div className="chart-news-list">{archive.slice(-10).reverse().map(item=><button key={item.id} onClick={()=>inspectNews(item)}><b>{item.source} {item.overnight_news?"• GECE":""}</b> {item.title}<small>{reactions.find(row=>row.news_id===item.id)?.status||"NO_REACTION"}</small></button>)}</div></aside></div></div>
 }
 
+function CollectionOverview({metrics,activity}:{metrics?:NewsMetrics;activity:CollectionActivity[]}){
+  const stats=[["Toplam haber",metrics?.total_news||0],["Son 24 saat",metrics?.news_last_24h||0],["Linked",metrics?.symbol_linked||0],["Link rate",`${metrics?.link_rate_pct||0}%`],["AI processed",metrics?.ai_processed||0],["Reconcile pending",metrics?.reconcile_pending||0]];
+  return <div className="detail-stack"><div className="collector-stats">{stats.map(([label,value])=><div key={label}><span>{label}</span><b>{value}</b></div>)}</div><div className="timeframe-strip">{Object.entries(metrics?.match_methods||{}).map(([key,value])=><span key={key}>{key} <b>{value}</b></span>)}</div><article className="panel table-panel nested-panel"><PanelTitle title="Son Veri Toplama İşlemleri" sub="Kalıcı collector activity günlüğü"/><div className="table-scroll"><table><thead><tr><th>Time</th><th>Module</th><th>Source / Symbol</th><th>Action</th><th>Status</th><th>Detail</th></tr></thead><tbody>{activity.map(item=><tr key={item.id}><td>{fmtDate(item.created_at)}</td><td>{item.module}</td><td>{item.subject||"—"}</td><td>{item.action}</td><td>{item.status}</td><td>{item.detail||"—"}</td></tr>)}</tbody></table></div></article></div>
+}
+
+function SourceHealthTable({sources}:{sources:NewsSourceHealth[]}){
+  return <article className="panel table-panel nested-panel"><PanelTitle title="Source Status" sub="Kaynak erişimi, başarı ve hata sayaçları"/><div className="table-scroll"><table><thead><tr><th>Source</th><th>Type</th><th>Status</th><th>Last Success</th><th>Last Item</th><th>Fetched</th><th>Inserted</th><th>Duplicates</th><th>Failures</th><th>Last Error</th></tr></thead><tbody>{sources.map(item=><tr key={item.source}><td><b>{item.source}</b></td><td>{item.type}</td><td><span className={`collector-status ${item.status==="WAF_BLOCKED"?"warning":""}`}>{item.status}</span></td><td>{item.last_success_at?fmtDate(item.last_success_at):"—"}</td><td>{item.last_item_at?fmtDate(item.last_item_at):"—"}</td><td>{item.items_fetched}</td><td>{item.items_inserted}</td><td>{item.duplicates}</td><td>{item.consecutive_failures}</td><td>{item.last_error||"—"}</td></tr>)}</tbody></table></div></article>
+}
+
+function BackfillDetails({backfill}:{backfill?:BackfillStatus}){
+  return <div className="detail-stack"><div className="progress"><i style={{width:`${backfill?.progress_pct||0}%`}}/></div><div className="collector-stats">{[["Progress",`${backfill?.progress_pct||0}%`],["Cursor",backfill?.cursor||0],["Completed",backfill?.completed_symbols||0],["Remaining",backfill?.remaining_symbols||0],["Candles",backfill?.candle_count||0],["Last",backfill?.last_symbol||"—"]].map(([label,value])=><div key={label}><span>{label}</span><b>{value}</b></div>)}</div><div className="timeframe-strip">{["5m","15m","1h","1d"].map(tf=><span key={tf}>{tf.toUpperCase()} <b>{backfill?.timeframes?.[tf]||0}</b></span>)}</div>{backfill?.last_error&&<p className="collector-error">{backfill.last_error}</p>}</div>
+}
+
+function ReactionDetails({reactions}:{reactions?:ReactionQueueStatus}){
+  const stats=[["Pending",reactions?.pending||0],["Waiting Open",reactions?.waiting_market_open||0],["Waiting 15M",reactions?.waiting_15m||0],["Waiting 1H",reactions?.waiting_1h||0],["Waiting 1D",reactions?.waiting_1d||0],["Waiting 5D",reactions?.waiting_5d||0],["Complete",reactions?.complete||0],["Error",reactions?.error||0]];
+  return <div className="detail-stack"><div className="progress"><i style={{width:`${reactions?.progress_pct||0}%`}}/></div><div className="collector-stats">{stats.map(([label,value])=><div key={label}><span>{label}</span><b>{value}</b></div>)}</div></div>
+}
+
+function ForwardRunDetails({forward,history,portfolio,winRate,profitFactor}:{forward?:ForwardStatus;history:Snapshot[];portfolio:Portfolio;winRate:number;profitFactor:number}){
+  return <div className="detail-stack"><div className="strategy-grid"><div><span>Run</span><b>{forward?.run_id||"NO RUN"}</b><small>{forward?.strategy_version||"—"}</small></div><div><span>Durum</span><b>{forward?.status||"UNKNOWN"}</b><small>{forward?.market_status||"—"}</small></div><div><span>Provider</span><b>{forward?.provider||"—"}</b><small>Real orders disabled</small></div><div><span>Scans / Signals</span><b>{forward?.completed_scans||0} / {forward?.signals||0}</b><small>{forward?.trades||0} kapanmış işlem</small></div><div><span>Worker</span><b>{forward?.worker?.embedded?"ACTIVE":"INACTIVE"}</b><small>{forward?.worker?.current_cadence_minutes??"—"} dk cadence</small></div><div><span>Benchmark</span><b>{forward?.benchmark?.return_pct!=null?pct(forward.benchmark.return_pct):"—"}</b><small>XU100</small></div></div><article className="panel equity nested-panel"><PanelTitle title="Canlı Portföy Eğrisi" sub="Snapshot bazlı sermaye gelişimi"/><EquityChart history={history} base={portfolio.initial_balance}/><div className="micro-stats"><span><b>{pct(winRate)}</b>Win rate</span><span><b>{profitFactor.toFixed(2)}</b>Profit factor</span><span><b>{money(portfolio.total_pnl)}</b>Toplam K/Z</span></div></article></div>
+}
+
+function UnmatchedNewsTable({rows}:{rows:UnmatchedNews[]}){
+  return <article className="panel table-panel nested-panel"><PanelTitle title="Eşleşmeyen Haberler" sub="Düşük güvenli adaylar sembole otomatik bağlanmaz"/><div className="table-scroll"><table><thead><tr><th>Date</th><th>Source</th><th>Title</th><th>Reason</th><th>Best candidate</th><th>Confidence</th></tr></thead><tbody>{rows.map(item=><tr key={item.id}><td>{fmtDate(item.published_at)}</td><td>{item.source}</td><td>{item.title}</td><td>{item.unmatched_reason||"PENDING"}</td><td>{item.best_candidate||"—"}</td><td>{item.best_candidate_confidence??"—"}</td></tr>)}</tbody></table></div></article>
+}
+
 function DataCollectionCenter({metrics,sources,reactions,memory,backfill,activity,unmatched}:{metrics?:NewsMetrics;sources:NewsSourceHealth[];reactions?:ReactionQueueStatus;memory?:MarketMemoryHealth;backfill?:BackfillStatus;activity:CollectionActivity[];unmatched:UnmatchedNews[]}){
   const sourceFailures=sources.filter(item=>item.enabled&&["ERROR","WAF_BLOCKED","RATE_LIMITED"].includes(item.status));
   const coreErrors=[backfill?.status,memory?.status].filter(item=>item==="ERROR").length;
@@ -1664,12 +1699,12 @@ function DataCollectionCenter({metrics,sources,reactions,memory,backfill,activit
   return <div className="collection-center"><div className={`collection-banner ${overall.toLowerCase()}`}><CloudDownload size={22}/><div><span>DATA COLLECTION</span><b>{overall}</b></div><small>30 saniyede bir sağlık ve metrik verileri yenilenir</small></div><div className="collector-grid"><article className="panel collector-card"><PanelTitle title="CANDLE BACKFILL" sub={backfill?.status||"NOT_AVAILABLE"}/><div className="progress"><i style={{width:`${backfill?.progress_pct||0}%`}}/></div><div className="collector-stats">{stat("Progress",`${backfill?.progress_pct||0}%`)}{stat("Cursor",backfill?.cursor||0)}{stat("Completed",backfill?.completed_symbols||0)}{stat("Remaining",backfill?.remaining_symbols||0)}{stat("Candles",backfill?.candle_count||0)}{stat("Last",backfill?.last_symbol||"—")}</div><div className="timeframe-strip">{["5m","15m","1h","1d"].map(x=><span key={x}>{x.toUpperCase()} <b>{backfill?.timeframes?.[x]||0}</b></span>)}</div>{backfill?.last_error&&<p className="collector-error">{backfill.last_error}</p>}</article><article className="panel collector-card"><PanelTitle title="MARKET MEMORY" sub={memory?.status||"NOT_AVAILABLE"}/><div className="collector-stats">{stat("Snapshots",memory?.snapshot_count||0)}{stat("Recorded",memory?.recorded_count||0)}{stat("Reconstructed",memory?.reconstructed_count||0)}{stat("Symbols",memory?.symbols||0)}{stat("Errors",memory?.error_count||0)}{stat("Last",memory?.last_snapshot_at?fmtDate(memory.last_snapshot_at):"—")}</div><div className="timeframe-strip">{["5m","15m","1h","1d"].map(x=><span key={x}>{x.toUpperCase()} <b>{memory?.timeframes?.[x]||0}</b></span>)}</div></article><article className="panel collector-card"><PanelTitle title="NEWS COLLECTION" sub="Normalize + dedupe + symbol reconciliation"/><div className="collector-stats">{stat("Total",metrics?.total_news||0)}{stat("Linked",metrics?.symbol_linked||0)}{stat("Link rate",`${metrics?.link_rate_pct||0}%`)}{stat("Unmatched",metrics?.unmatched||0)}{stat("Pending",metrics?.reconcile_pending||0)}{stat("Last cycle",metrics?.reconciled_last_cycle?.last_cycle_processed||0)}{stat("AI Processed",metrics?.ai_processed||0)}{stat("Overnight",metrics?.overnight_count||0)}</div><div className="timeframe-strip">{Object.entries(metrics?.match_methods||{}).map(([key,value])=><span key={key}>{key} <b>{value}</b></span>)}</div></article><article className="panel collector-card"><PanelTitle title="NEWS REACTION QUEUE" sub={`${reactions?.progress_pct||0}% complete`}/><div className="progress"><i style={{width:`${reactions?.progress_pct||0}%`}}/></div><div className="collector-stats">{stat("Pending",reactions?.pending||0)}{stat("Waiting Open",reactions?.waiting_market_open||0)}{stat("Waiting 15M",reactions?.waiting_15m||0)}{stat("Waiting 1H",reactions?.waiting_1h||0)}{stat("Waiting 1D",reactions?.waiting_1d||0)}{stat("Waiting 5D",reactions?.waiting_5d||0)}{stat("Complete",reactions?.complete||0)}{stat("Error",reactions?.error||0)}</div></article></div><article className="panel table-panel"><PanelTitle title="Eşleşmeyen Haberler" sub="Düşük güvenli adaylar sembole otomatik bağlanmaz"/><div className="table-scroll"><table><thead><tr><th>Date</th><th>Source</th><th>Title</th><th>Reason</th><th>Best candidate</th><th>Confidence</th></tr></thead><tbody>{unmatched.map(item=><tr key={item.id}><td>{fmtDate(item.published_at)}</td><td>{item.source}</td><td>{item.title}</td><td>{item.unmatched_reason||"PENDING"}</td><td>{item.best_candidate||"—"}</td><td>{item.best_candidate_confidence??"—"}</td></tr>)}</tbody></table></div></article><article className="panel table-panel"><PanelTitle title="Source Status" sub="KAP WAF_BLOCKED beklenen dış servis kısıtıdır"/><div className="table-scroll"><table><thead><tr><th>Source</th><th>Type</th><th>Status</th><th>Last Success</th><th>Last Item</th><th>Fetched</th><th>Inserted</th><th>Duplicates</th><th>Failures</th><th>Last Error</th></tr></thead><tbody>{sources.map(item=><tr key={item.source}><td><b>{item.source}</b></td><td>{item.type}</td><td><span className={`collector-status ${item.status==="WAF_BLOCKED"?"warning":""}`}>{item.status}</span></td><td>{item.last_success_at?fmtDate(item.last_success_at):"—"}</td><td>{item.last_item_at?fmtDate(item.last_item_at):"—"}</td><td>{item.items_fetched}</td><td>{item.items_inserted}</td><td>{item.duplicates}</td><td>{item.consecutive_failures}</td><td>{item.last_error||"—"}</td></tr>)}</tbody></table></div></article><article className="panel table-panel"><PanelTitle title="Son Veri Toplama İşlemleri" sub="Kalıcı collector activity günlüğü"/><div className="table-scroll"><table><thead><tr><th>Time</th><th>Module</th><th>Source / Symbol</th><th>Action</th><th>Status</th><th>Detail</th></tr></thead><tbody>{activity.map(item=><tr key={item.id}><td>{fmtDate(item.created_at)}</td><td>{item.module}</td><td>{item.subject||"—"}</td><td>{item.action}</td><td>{item.status}</td><td>{item.detail||"—"}</td></tr>)}</tbody></table></div></article></div>
 }
 
-function NewsPanel({rows,health,onRefresh}:{rows:NewsItem[];health?:NewsHealth;onRefresh:()=>Promise<void>}){
+function NewsPanel({rows,health,onRefresh,compactHealth=false}:{rows:NewsItem[];health?:NewsHealth;onRefresh:()=>Promise<void>;compactHealth?:boolean}){
   const [query,setQuery]=useState(""),[source,setSource]=useState("ALL"),[category,setCategory]=useState("ALL"),[sentiment,setSentiment]=useState("ALL"),[importance,setImportance]=useState("0"),[start,setStart]=useState(""),[end,setEnd]=useState(""),[overnight,setOvernight]=useState(false),[reaction,setReaction]=useState(false);
   const filtered=rows.filter(item=>(source==="ALL"||item.source===source)&&(category==="ALL"||item.category===category)&&(sentiment==="ALL"||item.ai_sentiment===sentiment)&&(item.ai_importance||0)>=Number(importance)&&(!query||`${item.symbol} ${item.title}`.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")))&&(!start||new Date(item.published_at)>=new Date(start))&&(!end||new Date(item.published_at)<=new Date(`${end}T23:59:59`))&&(!overnight||item.overnight_news)&&(!reaction||item.reaction?.status==="COMPLETE"));
   const values=(key:"source"|"category")=>Array.from(new Set(rows.map(item=>item[key]).filter(Boolean))).sort();
   const ret=(value?:number)=>value==null?"—":`${value.toFixed(2)}%`;
-  return <><article className="panel news-health"><PanelTitle title="News Health" sub={`Durum: ${health?.status||"NO_DATA"} • 24s: ${health?.last_24h||0} • Önemli: ${health?.important_24h||0} • Gece: ${health?.overnight_24h||0} • KAP: ${health?.kap_24h||0}`}/><div className="health-row">{Object.entries(health?.sources||{}).map(([name,state])=><span key={name}><b>{name}</b> {state.status} • {state.new_items} yeni • {state.parse_errors} parse hata</span>)}</div></article><article className="panel table-panel"><div className="chart-head"><div><b>Haber Arşivi</b><span>{filtered.length} / {rows.length} kayıt</span></div><button className="scan" onClick={()=>void onRefresh()}><RefreshCw size={14}/> Yenile</button></div><div className="archive-filters wide"><input placeholder="Sembol veya başlık ara" value={query} onChange={e=>setQuery(e.target.value)}/><input type="date" value={start} onChange={e=>setStart(e.target.value)}/><input type="date" value={end} onChange={e=>setEnd(e.target.value)}/><select value={source} onChange={e=>setSource(e.target.value)}><option value="ALL">Tüm kaynaklar</option>{values("source").map(x=><option key={x}>{x}</option>)}</select><select value={category} onChange={e=>setCategory(e.target.value)}><option value="ALL">Tüm kategoriler</option>{values("category").map(x=><option key={x}>{x}</option>)}</select><select value={sentiment} onChange={e=>setSentiment(e.target.value)}><option value="ALL">Tüm sentiment</option><option>POSITIVE</option><option>NEUTRAL</option><option>NEGATIVE</option></select><select value={importance} onChange={e=>setImportance(e.target.value)}><option value="0">Tüm önem</option><option value="50">Önem ≥50</option><option value="80">Önem ≥80</option></select><label><input type="checkbox" checked={overnight} onChange={e=>setOvernight(e.target.checked)}/> Overnight only</label><label><input type="checkbox" checked={reaction} onChange={e=>setReaction(e.target.checked)}/> Reaction complete only</label></div><div className="table-scroll"><table><thead><tr><th>Date</th><th>Symbol</th><th>Source</th><th>Title</th><th>Category</th><th>Sentiment</th><th>Importance</th><th>Reaction status</th><th>15M</th><th>1H</th><th>1D</th><th>5D</th><th>Abnormal 1D</th><th>AI summary</th></tr></thead><tbody>{filtered.map(item=><tr key={`${item.source}-${item.source_id||item.id}`}><td>{fmtDate(item.published_at)}</td><td><b>{item.symbol||"UNMATCHED"}</b></td><td>{item.source}</td><td><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></td><td>{item.category}</td><td>{item.ai_sentiment||"PENDING"}</td><td>{item.ai_importance??"—"}</td><td>{item.reaction?.status||"NOT_AVAILABLE"}</td><td>{ret(item.reaction?.return_15m)}</td><td>{ret(item.reaction?.return_1h)}</td><td>{ret(item.reaction?.return_1d)}</td><td>{ret(item.reaction?.return_5d)}</td><td>{ret(item.reaction?.abnormal_return_1d)}</td><td>{item.ai_summary||"—"}</td></tr>)}</tbody></table></div></article></>
+  return <>{!compactHealth&&<article className="panel news-health"><PanelTitle title="News Health" sub={`Durum: ${health?.status||"NO_DATA"} • 24s: ${health?.last_24h||0} • Önemli: ${health?.important_24h||0} • Gece: ${health?.overnight_24h||0} • KAP: ${health?.kap_24h||0}`}/><div className="health-row">{Object.entries(health?.sources||{}).map(([name,state])=><span key={name}><b>{name}</b> {state.status} • {state.new_items} yeni • {state.parse_errors} parse hata</span>)}</div></article>}<article className="panel table-panel nested-panel"><div className="chart-head"><div><b>Haber Arşivi</b><span>{filtered.length} / {rows.length} kayıt</span></div><button className="scan" onClick={()=>void onRefresh()}><RefreshCw size={14}/> Yenile</button></div><div className="archive-filters wide"><input placeholder="Sembol veya başlık ara" value={query} onChange={e=>setQuery(e.target.value)}/><input type="date" value={start} onChange={e=>setStart(e.target.value)}/><input type="date" value={end} onChange={e=>setEnd(e.target.value)}/><select value={source} onChange={e=>setSource(e.target.value)}><option value="ALL">Tüm kaynaklar</option>{values("source").map(x=><option key={x}>{x}</option>)}</select><select value={category} onChange={e=>setCategory(e.target.value)}><option value="ALL">Tüm kategoriler</option>{values("category").map(x=><option key={x}>{x}</option>)}</select><select value={sentiment} onChange={e=>setSentiment(e.target.value)}><option value="ALL">Tüm sentiment</option><option>POSITIVE</option><option>NEUTRAL</option><option>NEGATIVE</option></select><select value={importance} onChange={e=>setImportance(e.target.value)}><option value="0">Tüm önem</option><option value="50">Önem ≥50</option><option value="80">Önem ≥80</option></select><label><input type="checkbox" checked={overnight} onChange={e=>setOvernight(e.target.checked)}/> Overnight only</label><label><input type="checkbox" checked={reaction} onChange={e=>setReaction(e.target.checked)}/> Reaction complete only</label></div><div className="table-scroll"><table><thead><tr><th>Date</th><th>Symbol</th><th>Source</th><th>Title</th><th>Category</th><th>Sentiment</th><th>Importance</th><th>Reaction status</th><th>15M</th><th>1H</th><th>1D</th><th>5D</th><th>Abnormal 1D</th><th>AI summary</th></tr></thead><tbody>{filtered.map(item=><tr key={`${item.source}-${item.source_id||item.id}`}><td>{fmtDate(item.published_at)}</td><td><b>{item.symbol||"UNMATCHED"}</b></td><td>{item.source}</td><td><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></td><td>{item.category}</td><td>{item.ai_sentiment||"PENDING"}</td><td>{item.ai_importance??"—"}</td><td>{item.reaction?.status||"NOT_AVAILABLE"}</td><td>{ret(item.reaction?.return_15m)}</td><td>{ret(item.reaction?.return_1h)}</td><td>{ret(item.reaction?.return_1d)}</td><td>{ret(item.reaction?.return_5d)}</td><td>{ret(item.reaction?.abnormal_return_1d)}</td><td>{item.ai_summary||"—"}</td></tr>)}</tbody></table></div></article></>
 }
 
 function Positions({ rows }: { rows: Position[] }) {
