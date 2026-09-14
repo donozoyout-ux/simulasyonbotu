@@ -20,6 +20,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { api } from "@/services/api";
+import { deriveDashboardStatus, preserveSuccessfulState, type DashboardSystemMode } from "@/services/dashboard-status";
 import type {
   Analysis,
   Candle,
@@ -98,6 +99,11 @@ const initialStrategyHealth: StrategyHealth = { status: "NO_RESEARCH_REPORT" };
 const EMPTY_SWINGS: Array<{ timestamp: string; price: number; type: string }> =
   [];
 
+type Settled<T>={ok:true;value:T}|{ok:false;label:string};
+const isolated=async<T,>(label:string,promise:Promise<T>):Promise<Settled<T>>=>{
+  try{return {ok:true,value:await promise}}catch{return {ok:false,label}}
+};
+
 const money = (v: number) =>
   new Intl.NumberFormat("tr-TR", {
     style: "currency",
@@ -128,7 +134,8 @@ export function DashboardShell() {
     [selected, setSelected] = useState(""),
     [timeframe, setTimeframe] = useState("15m"),
     [historyAt,setHistoryAt]=useState(""),
-    [mode, setMode] = useState("DATA ERROR"),
+    [mode, setMode] = useState<DashboardSystemMode>("BACKEND OFFLINE"),
+    [failedModules,setFailedModules]=useState<string[]>([]),
     [health, setHealth] = useState<DataHealth>(initialHealth),
     [scannerStatus, setScannerStatus] = useState<ScannerStatus>(),
     [strategyHealth, setStrategyHealth] = useState<StrategyHealth>(
@@ -157,56 +164,31 @@ export function DashboardShell() {
       slippage_rate: 0.0005,
     });
   const load = useCallback(async () => {
-    try {
-      const [p, a, w, pos, t, d, h, s, dh, sh, fw, ss, nh, mh, bf] = await Promise.all([
-        api.portfolio(),
-        api.analyses(),
-        api.watchlist(),
-        api.positions(),
-        api.trades(),
-        api.decisions(),
-        api.history(),
-        api.settings(),
-        api.dataHealth(),
-        api.strategyHealth(),
-        api.forwardStatus(),
-        api.scannerStatus().catch(()=>undefined),
-        api.newsHealth().catch(()=>undefined),
-        api.marketMemoryHealth().catch(()=>undefined),
-        api.backfillStatus().catch(()=>undefined),
-      ]);
-      setPortfolio(p);
-      setForward(fw);
-      setAnalyses(a);
-      setWatch(w);
-      setPositions(pos);
-      setTrades(t);
-      setDecisions(d);
-      setHistory(h);
-      setSettings(s);
-      setHealth(dh);
-      setStrategyHealth(sh);
-      setScannerStatus(ss);
-      setNewsHealth(nh);
-      setMemoryHealth(mh);
-      setBackfill(bf);
-      setSelected((current) =>
-        a.some((x) => x.symbol === current) ? current : a[0]?.symbol || "",
-      );
-      setMode(
-        dh.status === "DATA_ERROR"
-          ? "DATA ERROR"
-          : dh.mode === "MOCK"
-            ? "MOCK DATA"
-            : "LIVE PAPER",
-      );
-      setMessage("Sistem hazır");
-    } catch {
-      setAnalyses([]);
-      setHealth({ ...initialHealth, status: "DATA_ERROR" });
-      setMode("DATA ERROR");
-      setMessage("Backend veya veri servisi çevrimdışı");
-    }
+    const [be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf]=await Promise.all([
+      isolated("Backend Health",api.health()),isolated("Portfolio",api.portfolio()),
+      isolated("Scanner Results",api.analyses()),isolated("Watchlist",api.watchlist()),
+      isolated("Positions",api.positions()),isolated("Trades",api.trades()),
+      isolated("Decisions",api.decisions()),isolated("Portfolio History",api.history()),
+      isolated("Settings",api.settings()),isolated("Data Health",api.dataHealth()),
+      isolated("Strategy Health",api.strategyHealth()),isolated("Forward Status",api.forwardStatus()),
+      isolated("Scanner Status",api.scannerStatus()),isolated("News Health",api.newsHealth()),
+      isolated("Market Memory",api.marketMemoryHealth()),isolated("Backfill",api.backfillStatus()),
+    ]);
+    setPortfolio(current=>preserveSuccessfulState(current,p));if(fw.ok)setForward(fw.value);if(w.ok)setWatch(w.value);
+    if(pos.ok)setPositions(pos.value);if(t.ok)setTrades(t.value);if(d.ok)setDecisions(d.value);
+    if(h.ok)setHistory(h.value);if(s.ok)setSettings(s.value);if(dh.ok)setHealth(dh.value);
+    if(sh.ok)setStrategyHealth(sh.value);if(ss.ok)setScannerStatus(ss.value);
+    if(nh.ok)setNewsHealth(nh.value);if(mh.ok)setMemoryHealth(mh.value);if(bf.ok)setBackfill(bf.value);
+    if(a.ok){setAnalyses(a.value);setSelected(current=>a.value.some(x=>x.symbol===current)?current:a.value[0]?.symbol||"")}
+    const results=[be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf];
+    const failures=results.filter((result):result is {ok:false;label:string}=>!result.ok).map(result=>result.label);
+    const nextMode=deriveDashboardStatus({backendHealthOk:be.ok,failedModules:failures.filter(x=>x!=="Backend Health"),dataHealth:dh.ok?dh.value:undefined});
+    setFailedModules(failures);setMode(nextMode);
+    if(nextMode==="BACKEND OFFLINE")setMessage("Backend health endpoint yanıt vermiyor");
+    else if(nextMode==="API DEGRADED")setMessage(`${failures.length} modül geçici olarak erişilemiyor`);
+    else if(nextMode==="DATA DEGRADED"&&dh.ok)setMessage(`${dh.value.valid_symbols}/${dh.value.valid_symbols+dh.value.failed_symbols} sembol analiz edildi • ${dh.value.failed_symbols} hata`);
+    else if(nextMode==="DATA ERROR")setMessage("Canlı veri taraması kritik hata bildirdi");
+    else setMessage("Sistem hazır");
   }, []);
   useEffect(() => {
     void Promise.resolve().then(load);
@@ -319,10 +301,10 @@ export function DashboardShell() {
               {forward?.market_status || "MARKET CLOSED"}
             </span>
             <span
-              className={`source ${mode.includes("MOCK") ? "mock" : mode.includes("ERROR") ? "error" : "live"}`}
+              className={`source ${mode.includes("MOCK") ? "mock" : mode.includes("ERROR")||mode.includes("OFFLINE") ? "error" : mode.includes("DEGRADED")?"warning":"live"}`}
             >
               <i />
-              {forward?.provider || mode}
+              {mode}
             </span>
             <button
               className="pause-control"
@@ -359,6 +341,7 @@ export function DashboardShell() {
             })}
           </span>
         </div>
+        {mode!=="LIVE PAPER"&&<div className={`diagnostics-banner ${mode.toLowerCase().replaceAll(" ","-")}`}><div><b>{mode}</b><span>{message}</span></div>{failedModules.length>0&&<ul>{failedModules.slice(0,6).map(item=><li key={item}>{item}</li>)}</ul>}</div>}
         {view === "Genel Bakış" && (
           <Overview
             portfolio={portfolio}

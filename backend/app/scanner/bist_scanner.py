@@ -28,6 +28,7 @@ from app.scanner.watchlist_manager import update_watchlist
 from app.scanner.universe_builder import UniverseBuilder
 from app.services.forward_test import ensure_forward_run,upsert_daily_summary
 from app.services.telegram import TelegramNotifier
+from app.services.telegram_alerts import TelegramDataHealthAlerter
 from app.research.v4 import strategy_config_snapshot
 from app.market_data.cache import redact_secret
 from app.market_memory.service import MarketMemoryService
@@ -419,6 +420,11 @@ class BistScanner:
         run.source_candle_timestamp=max((item[1].signal_candle_time for item in items),default=None)
         if self.analysis_mode=="ANALYSIS_ONLY":run.closed_candle_timestamp=run.source_candle_timestamp
         run.signals=sum(item[0].decision=="POSSIBLE_ENTRY" for item in items);run.entries=funnel["buy"];self.db.commit()
+        try:
+            TelegramDataHealthAlerter(self.db,self.config,self.telegram).notify_scan(run)
+        except Exception as exc:
+            self.db.rollback()
+            logger.warning("telegram_data_health_alert_failed type=%s",type(exc).__name__)
         self._log("SCANNER","COMPLETED",f"{len(items)} analiz, {len(errors)} hata, {funnel['buy']} BUY",details=funnel)
         return {"status":"completed","analyzed":len(items),"errors":errors,"funnel":funnel,"duration_ms":run.duration_ms,
             "analysis_mode":self.analysis_mode,"market_open":market_open,"entries_enabled":self.analysis_mode=="LIVE" and market_open,

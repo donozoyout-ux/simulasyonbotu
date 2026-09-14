@@ -189,6 +189,8 @@ export type DataHealth = {
   provider: string;
   mode: string;
   status: string;
+  severity?: "OK" | "WARNING" | "CRITICAL";
+  system_status?: "LIVE_PAPER" | "DATA_DEGRADED" | "DATA_ERROR";
   market_open?: boolean;
   analysis_mode?: "LIVE" | "ANALYSIS_ONLY";
   last_successful_fetch?: string;

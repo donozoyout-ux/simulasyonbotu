@@ -947,6 +947,7 @@ tbody tr:hover {
   grid-template-columns: minmax(0, 1fr) 310px;
   gap: 11px;
 }
+.diagnostics-banner{display:flex;justify-content:space-between;gap:18px;align-items:center;margin:0 0 12px;padding:10px 13px;border:1px solid #6b5530;border-radius:8px;background:#241f15;color:#f2c879;font-size:.76rem}.diagnostics-banner div{display:flex;gap:10px;align-items:center}.diagnostics-banner ul{display:flex;gap:12px;flex-wrap:wrap;margin:0;padding-left:18px}.diagnostics-banner.data-error,.diagnostics-banner.backend-offline{border-color:#65303a;background:#25151a;color:#ff9ca3}.diagnostics-banner.api-degraded{border-color:#535c6d;background:#1a202b;color:#b7c4d7}
 
 .history-controls,.archive-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .history-controls input,.archive-filters input,.memory-layout select{background:#111821;border:1px solid #2a3745;color:#e7eef7;border-radius:8px;padding:8px 10px}
@@ -1162,6 +1163,7 @@ tbody tr:hover {
   background: var(--red);
   box-shadow: 0 0 8px var(--red);
 }
+.source.warning{border-color:#6b5530;color:#f2c879;background:#241f15}.source.warning i{background:#f2b84b;box-shadow:0 0 8px #f2b84b}
 .health-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

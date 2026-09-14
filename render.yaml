@@ -84,6 +84,16 @@ services:
         value: "true"
       - key: TELEGRAM_OFF_HOURS_ANALYSIS
         value: "false"
+      - key: TELEGRAM_COMMANDS_ENABLED
+        value: "true"
+      - key: TELEGRAM_COMMAND_POLL_SECONDS
+        value: "15"
+      - key: TELEGRAM_DATA_HEALTH_ALERTS
+        value: "true"
+      - key: TELEGRAM_WORKER_ALERTS
+        value: "true"
+      - key: TELEGRAM_STARTUP_ALERT
+        value: "true"
       - key: TWELVE_DATA_API_KEY
         sync: false
       - key: EODHD_API_TOKEN

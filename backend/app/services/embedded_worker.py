@@ -13,6 +13,7 @@ from app.news.reconciliation import NewsSymbolReconciliationService
 from app.market_memory.backfill import BackfillService
 from app.market_memory.service import MarketMemoryService
 from app.market_memory.brief import MorningBriefService
+from app.services.telegram import TelegramNotifier
 
 logger = logging.getLogger("EMBEDDED_WORKER")
 
@@ -31,6 +32,7 @@ class EmbeddedWorker:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_news_poll: float | None = None
+        self._last_worker_alert: float | None = None
 
     def _sleep_seconds(self) -> int:
         session = BistMarketSession.from_config(self.config)
@@ -38,13 +40,26 @@ class EmbeddedWorker:
             return max(60, int(self.config.market_open_poll_seconds))
         return max(60, int(self.config.after_hours_poll_seconds))
 
+    def _notify_worker_failure(self, exc: Exception, now: float | None = None) -> bool:
+        now = monotonic() if now is None else now
+        if not self.config.telegram_worker_alerts:
+            return False
+        if self._last_worker_alert is not None and now - self._last_worker_alert < 1800:
+            return False
+        TelegramNotifier(self.config).send("🚨 <b>WORKER ERROR</b>\n"
+            "Embedded worker cycle failed.\nTrading system remains fail-safe.\n"
+            f"Category: {type(exc).__name__}\nCheck production logs.")
+        self._last_worker_alert = now
+        return True
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
                 result = self.run_cycle()
                 logger.info("embedded_worker_cycle", extra={"result": result.get("status")})
-            except Exception:
+            except Exception as exc:
                 logger.exception("embedded_worker_cycle_failed")
+                self._notify_worker_failure(exc)
 
             self._stop.wait(self._sleep_seconds())
 

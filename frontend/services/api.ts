@@ -8,6 +8,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json();
 }
 export const api = {
+  health: () => get<{status:string;mode:string;provider:string;real_orders:boolean}>("/health"),
   portfolio: () => get<Portfolio>("/portfolio"),
   history: () => get<Snapshot[]>("/portfolio/history"),
   positions: () => get<Position[]>("/positions"),

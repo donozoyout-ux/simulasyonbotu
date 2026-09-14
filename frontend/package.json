@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app components services types next.config.ts"
+    "lint": "eslint app components services types next.config.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.mts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.6",

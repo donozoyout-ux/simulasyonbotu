@@ -72,6 +72,11 @@ class AppSettings(BaseSettings):
     telegram_signal_alerts: bool = True
     telegram_off_hours_analysis: bool = False
     telegram_timeout_seconds: float = 15
+    telegram_commands_enabled: bool = True
+    telegram_command_poll_seconds: int = 15
+    telegram_data_health_alerts: bool = True
+    telegram_worker_alerts: bool = True
+    telegram_startup_alert: bool = True
     news_enabled: bool = True
     kap_enabled: bool = True
     news_poll_minutes_open: int = 5

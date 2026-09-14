@@ -24,9 +24,14 @@ from app.market_memory.backfill import BackfillService
 from app.market_memory.service import MarketMemoryService, aggregate_cache_stats
 from app.services.collection_activity import recent_activity
 from app.services.historical_candles import candle_read_cache, historical_candles, invalidate_candle_cache
+from app.services.system_health import classify_data_health, scan_data_status
+from app.services.telegram_commands import telegram_command_runtime_status
 
 router = APIRouter()
 config = get_settings()
+
+# Kept as a compatibility alias for existing callers and tests.
+scan_data_health_status = scan_data_status
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 
@@ -36,14 +41,6 @@ def dump(value):
 
 def current_run(db:Session)->ForwardRun:
     return ensure_forward_run(db,config)
-
-
-def scan_data_health_status(run: ScanRun) -> str:
-    if not run.failed_symbols and not run.stale_symbols:
-        return "OK"
-    if run.failed_symbols and (run.valid_symbols == 0 or run.failed_symbols > run.total_symbols / 2):
-        return "DATA_ERROR"
-    return "PARTIAL"
 
 
 @router.get("/health")
@@ -59,7 +56,8 @@ def ai_status():
 
 @router.get("/telegram/status")
 def telegram_status():
-    return TelegramNotifier(config).status()
+    return {**TelegramNotifier(config).status(), **telegram_command_runtime_status(),
+        "data_health_alerts":config.telegram_data_health_alerts}
 
 
 @router.post("/telegram/test")
@@ -81,8 +79,11 @@ def data_health(db: Session = Depends(get_db)):
     forward=active_forward_run(db)
     run=db.scalar(select(ScanRun).where(ScanRun.run_id==forward.run_id).order_by(desc(ScanRun.started_at)).limit(1)) if forward else None
     market_open=BistMarketSession.from_config(config).is_open()
-    if not run:return {"provider":config.market_data_provider,"mode":config.data_mode.upper(),"status":"NO_SCAN","market_open":market_open,"analysis_mode":"LIVE" if market_open else "ANALYSIS_ONLY","valid_symbols":0,"failed_symbols":0,"stale_symbols":0,"errors":[]}
-    return dump({"provider":run.provider,"mode":run.data_mode.upper(),"status":scan_data_health_status(run),
+    if not run:return {"provider":config.market_data_provider,"mode":config.data_mode.upper(),
+        **classify_data_health(None,market_open),"market_open":market_open,
+        "analysis_mode":"LIVE" if market_open else "ANALYSIS_ONLY","valid_symbols":0,"failed_symbols":0,"stale_symbols":0,"errors":[]}
+    classification=classify_data_health(run,market_open)
+    return dump({"provider":run.provider,"mode":run.data_mode.upper(),**classification,
         "market_open":market_open,"analysis_mode":run.analysis_mode,
         "last_successful_fetch":run.completed_at,"scanner_last_run":run.started_at,"scanner_duration_ms":run.duration_ms,
         "valid_symbols":run.valid_symbols,"failed_symbols":run.failed_symbols,"stale_symbols":run.stale_symbols,

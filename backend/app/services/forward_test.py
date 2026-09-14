@@ -45,8 +45,13 @@ def ensure_forward_run(db: Session, config, now: datetime | None=None) -> Forwar
     return run
 
 
-def set_paused(db:Session,config,paused:bool)->ForwardRun:
-    run=ensure_forward_run(db,config);run.paused=paused;db.commit();db.refresh(run);return run
+def set_paused(db:Session,config,paused:bool,*,create_if_missing:bool=True)->ForwardRun|None:
+    run=active_forward_run(db)
+    if run is None and create_if_missing:
+        run=ensure_forward_run(db,config)
+    if run is None:
+        return None
+    run.paused=paused;db.commit();db.refresh(run);return run
 
 
 def reset_forward_run(db:Session,config,now:datetime|None=None)->ForwardRun:

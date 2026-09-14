@@ -9,8 +9,9 @@ from app.config.settings import AppSettings
 
 
 class TelegramNotifier:
-    def __init__(self, config: AppSettings):
+    def __init__(self, config: AppSettings, client: httpx.Client | None = None):
         self.config = config
+        self.client = client
 
     @property
     def configured(self) -> bool:
@@ -25,6 +26,8 @@ class TelegramNotifier:
             "enabled": self.config.telegram_enabled,
             "configured": self.configured,
             "signal_alerts": self.config.telegram_signal_alerts,
+            "commands_enabled": self.config.telegram_commands_enabled,
+            "data_health_alerts": self.config.telegram_data_health_alerts,
         }
 
     def send(self, text: str) -> dict[str, Any]:
@@ -43,10 +46,15 @@ class TelegramNotifier:
         }
 
         try:
-            with httpx.Client(timeout=self.config.telegram_timeout_seconds) as client:
-                response = client.post(url, json=payload)
+            if self.client is not None:
+                response = self.client.post(url, json=payload)
                 response.raise_for_status()
                 body = response.json()
+            else:
+                with httpx.Client(timeout=self.config.telegram_timeout_seconds) as client:
+                    response = client.post(url, json=payload)
+                    response.raise_for_status()
+                    body = response.json()
             if not body.get("ok"):
                 return {"status": "API_ERROR"}
             return {"status": "SENT"}
