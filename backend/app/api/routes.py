@@ -26,6 +26,7 @@ from app.services.collection_activity import recent_activity
 from app.services.historical_candles import candle_read_cache, historical_candles, invalidate_candle_cache
 from app.services.system_health import classify_data_health, scan_data_status
 from app.services.telegram_commands import telegram_command_runtime_status
+from app.services.simple_paper import SimplePaperEngine, simple_candidates, simple_status
 
 router = APIRouter()
 config = get_settings()
@@ -138,6 +139,23 @@ def strategy_snapshots(limit:int=Query(20,ge=1,le=50)):
 
 @router.get("/portfolio")
 def portfolio(db: Session = Depends(get_db)): return dump(portfolio_summary(db, config.initial_balance))
+
+
+@router.get("/simple-paper/status")
+def get_simple_paper_status(db: Session = Depends(get_db)):
+    return simple_status(db, config)
+
+
+@router.get("/simple-paper/candidates")
+def get_simple_paper_candidates(limit: int = Query(5, ge=1, le=28), db: Session = Depends(get_db)):
+    return simple_candidates(db, config, limit)
+
+
+@router.post("/simple-paper/run")
+def run_simple_paper(max_symbols: int | None = Query(None, ge=1, le=28), db: Session = Depends(get_db)):
+    market_open = BistMarketSession.from_config(config).is_open()
+    return SimplePaperEngine(db, config).scan(market_open=market_open, allow_entry=market_open,
+                                                max_symbols=max_symbols)
 
 
 @router.get("/forward/status")

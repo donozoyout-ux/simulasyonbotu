@@ -259,6 +259,17 @@ export type ScannerStatus = {
     analysis_mode:string;
   }>;
 };
+export type SimplePaperCandidate = {
+  scan_id:string;symbol:string;price:number;change_15m_pct:number;change_1h_pct:number;
+  ema20:number;ema50:number;rsi14:number;volume:number;volume_sma20:number;volume_ratio:number;
+  score:number;decision:"BUY"|"WATCH"|"SKIP";candle_time:string;reason:string;
+};
+export type SimplePaperStatus = {
+  mode:"SIMPLE_PAPER_V1";market_open:boolean;portfolio_value:number;cash:number;equity:number;
+  unrealized_pnl:number;realized_pnl:number;last_scan_at?:string;valid_symbols:number;failed_symbols:number;
+  best_candidate?:SimplePaperCandidate;entry_threshold:60;real_orders:false;paused:boolean;
+  open_position?:{symbol:string;quantity:number;entry_price:number;current_price:number;stop:number;target:number;unrealized_pnl:number};
+};
 
 export type ScannerRunResponse = {
   status: "completed" | "market_closed" | "off_hours_waiting" | "already_running" | "wrong_mode";

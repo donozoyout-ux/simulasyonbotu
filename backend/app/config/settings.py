@@ -50,6 +50,9 @@ class AppSettings(BaseSettings):
     auto_scan_enabled: bool = False
     operation_mode: str = "LIVE_PAPER"
     live_strategy_version: str = "V3_FROZEN_1"
+    simple_entry_score: int = 60
+    simple_max_open_positions: int = 1
+    simple_symbol_limit: int = 28
     worker_poll_seconds: int = 20
     embedded_worker_enabled: bool = True
     market_open_poll_seconds: int = 300

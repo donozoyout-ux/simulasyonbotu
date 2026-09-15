@@ -48,6 +48,8 @@ import type {
   NewsReaction,
   SnapshotDetail,
   UnmatchedNews,
+  SimplePaperCandidate,
+  SimplePaperStatus,
 } from "@/types";
 import { PriceChart } from "./price-chart";
 
@@ -129,6 +131,8 @@ export function DashboardShell() {
     [telegramStatus,setTelegramStatus]=useState<{enabled:boolean;configured:boolean;signal_alerts:boolean;commands_enabled?:boolean;command_poller_running?:boolean;data_health_alerts?:boolean}>(),
     [collectionActivity,setCollectionActivity]=useState<CollectionActivity[]>([]),
     [unmatchedNews,setUnmatchedNews]=useState<UnmatchedNews[]>([]),
+    [simpleStatus,setSimpleStatus]=useState<SimplePaperStatus>(),
+    [simpleCandidates,setSimpleCandidates]=useState<SimplePaperCandidate[]>([]),
     [loading, setLoading] = useState(false),
     [message, setMessage] = useState("Yerel API bekleniyor"),
     [settings, setSettings] = useState<Record<string, number>>({
@@ -143,7 +147,7 @@ export function DashboardShell() {
       slippage_rate: 0.0005,
     });
   const load = useCallback(async () => {
-    const [be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf,tg]=await Promise.all([
+    const [be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf,tg,sp,sc]=await Promise.all([
       isolated("Backend Health",api.health()),isolated("Portfolio",api.portfolio()),
       isolated("Scanner Results",api.analyses()),isolated("Watchlist",api.watchlist()),
       isolated("Positions",api.positions()),isolated("Trades",api.trades()),
@@ -153,6 +157,7 @@ export function DashboardShell() {
       isolated("Scanner Status",api.scannerStatus()),isolated("News Health",api.newsHealth()),
       isolated("Market Memory",api.marketMemoryHealth()),isolated("Backfill",api.backfillStatus()),
       isolated("Telegram",api.telegramStatus()),
+      isolated("Simple Paper Status",api.simplePaperStatus()),isolated("Simple Candidates",api.simplePaperCandidates()),
     ]);
     setPortfolio(current=>preserveSuccessfulState(current,p));if(fw.ok)setForward(fw.value);if(w.ok)setWatch(w.value);
     if(pos.ok)setPositions(pos.value);if(t.ok)setTrades(t.value);if(d.ok)setDecisions(d.value);
@@ -160,8 +165,9 @@ export function DashboardShell() {
     if(sh.ok)setStrategyHealth(sh.value);if(ss.ok)setScannerStatus(ss.value);
     if(nh.ok)setNewsHealth(nh.value);if(mh.ok)setMemoryHealth(mh.value);if(bf.ok)setBackfill(bf.value);
     if(tg.ok)setTelegramStatus(tg.value);
+    if(sp.ok)setSimpleStatus(sp.value);if(sc.ok)setSimpleCandidates(sc.value);
     if(a.ok){setAnalyses(a.value);setSelected(current=>a.value.some(x=>x.symbol===current)?current:a.value[0]?.symbol||"")}
-    const results=[be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf,tg];
+    const results=[be,p,a,w,pos,t,d,h,s,dh,sh,fw,ss,nh,mh,bf,tg,sp,sc];
     const failures=results.filter((result):result is {ok:false;label:string}=>!result.ok).map(result=>result.label);
     const nextMode=deriveDashboardStatus({backendHealthOk:be.ok,failedModules:failures.filter(x=>x!=="Backend Health"),dataHealth:dh.ok?dh.value:undefined});
     setFailedModules(failures);setMode(nextMode);
@@ -208,9 +214,10 @@ export function DashboardShell() {
     setLoading(true);
     setMessage("BIST taranıyor…");
     try {
-      const result = await api.scan(maxSymbols);
+      const result = forward?.operation_mode==="SIMPLE_PAPER_V1" ? await api.simplePaperRun(maxSymbols) : await api.scan(maxSymbols);
       await load();
-      setMessage(result.analysis_mode === "ANALYSIS_ONLY" ? `Kapalı piyasa analizi tamamlandı • ${result.analyzed} sembol • emirler devre dışı` : "Tarama tamamlandı");
+      const analyzed="analyzed" in result?result.analyzed:result.valid_symbols;
+      setMessage(result.analysis_mode === "ANALYSIS_ONLY" ? `Kapalı piyasa analizi tamamlandı • ${analyzed} sembol • emirler devre dışı` : "Tarama tamamlandı");
     } catch {
       setMessage("Tarama başlatılamadı — backend durumunu kontrol edin");
     } finally {
@@ -337,6 +344,8 @@ export function DashboardShell() {
             news={news}
             decisions={decisions}
             mode={mode}
+            simpleStatus={simpleStatus}
+            simpleCandidates={simpleCandidates}
             onSelect={(s) => {
               setSelected(s);
               setView("Grafik & Analiz");
@@ -390,11 +399,31 @@ export function DashboardShell() {
   );
 }
 
-function HomeView({portfolio,forward,analyses,positions,watch,health,scannerStatus,news,decisions,mode,onSelect,onOpenScanner,onOpenSystem}:{
+function HomeView({portfolio,forward,analyses,positions,watch,health,scannerStatus,news,decisions,mode,simpleStatus,simpleCandidates,onSelect,onOpenScanner,onOpenSystem}:{
   portfolio:Portfolio;forward?:ForwardStatus;analyses:Analysis[];positions:Position[];watch:WatchItem[];
   health:DataHealth;scannerStatus?:ScannerStatus;news:NewsItem[];decisions:Decision[];mode:DashboardSystemMode;
+  simpleStatus?:SimplePaperStatus;simpleCandidates:SimplePaperCandidate[];
   onSelect:(symbol:string)=>void;onOpenScanner:()=>void;onOpenSystem:()=>void;
 }){
+  if(forward?.operation_mode==="SIMPLE_PAPER_V1"){
+    const open=simpleStatus?.open_position,best=simpleStatus?.best_candidate;
+    const cards=[
+      {label:"Portföy",value:money(simpleStatus?.portfolio_value??portfolio.portfolio_value),meta:`Nakit ${money(simpleStatus?.cash??portfolio.cash_balance)}`,icon:WalletCards},
+      {label:"Açık Pozisyon",value:open?.symbol||"NONE",meta:open?`${open.quantity} lot • ${money(open.current_price)}`:"Yeni sinyal bekleniyor",icon:Target},
+      {label:"Gerçekleşmemiş K/Z",value:money(simpleStatus?.unrealized_pnl??0),meta:open?`Entry ${money(open.entry_price)}`:"Açık pozisyon yok",icon:Activity},
+      {label:"Gerçekleşmiş K/Z",value:money(simpleStatus?.realized_pnl??0),meta:"Kapanmış simple işlemler",icon:CircleDollarSign},
+      {label:"Son Tarama",value:`${simpleStatus?.valid_symbols??0} / ${simpleStatus?.failed_symbols??0}`,meta:"Geçerli / hatalı sembol",icon:RefreshCw},
+      {label:"En İyi Aday",value:best?`${best.symbol} • ${best.score}`:"NONE",meta:`Simple eşik ${simpleStatus?.entry_threshold??60}`,icon:ListFilter},
+    ];
+    return <div className="home-view simple-paper-home">
+      <section className="metric-grid simple-metrics">{cards.map(card=><article className="metric" key={card.label}><div><span>{card.label}</span><b>{card.value}</b><small>{card.meta}</small></div><card.icon size={19}/></article>)}</section>
+      <article className="panel table-panel"><PanelTitle title="Top 5 Aday" sub={`SIMPLE_PAPER_V1 • ${simpleStatus?.market_open?"entry uygun":"analysis only"} • gerçek emir yok`}/>
+        <div className="table-scroll"><table><thead><tr><th>Symbol</th><th>Price</th><th>15m%</th><th>1h%</th><th>Score</th><th>Decision</th></tr></thead>
+          <tbody>{simpleCandidates.slice(0,5).map(item=><tr key={item.symbol} onClick={()=>onSelect(item.symbol)}><td><b>{item.symbol}</b></td><td>{money(item.price)}</td><td className={item.change_15m_pct>=0?"green":"red"}>{pct(item.change_15m_pct)}</td><td className={item.change_1h_pct>=0?"green":"red"}>{pct(item.change_1h_pct)}</td><td><b>{item.score}</b></td><td>{item.decision}</td></tr>)}</tbody>
+        </table>{!simpleCandidates.length&&<Empty icon={ListFilter} title="Henüz aday yok" text="Simple paper taraması adayları burada sıralayacak."/>}</div>
+      </article>
+    </div>
+  }
   const stats=scannerStatus?.score_stats;
   const important=[
     ...news.filter(item=>(item.ai_importance??0)>=80).map(item=>({id:`news-${item.id}`,at:item.published_at,

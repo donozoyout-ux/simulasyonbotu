@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -108,3 +109,14 @@ class TelegramNotifier:
             f"K/Z: <b>{escape(str(pnl))}</b> TL\n"
             f"Neden: {escape(reason)}"
         )
+
+    @staticmethod
+    def simple_buy_message(symbol: str, quantity: int, price: Any, stop: Any, target: Any, score: int, portfolio: Any) -> str:
+        return (f"🟢 <b>PAPER BUY</b>\n\n<b>{escape(symbol)}</b>\n{quantity} lot\nEntry: {price}\n"
+                f"Score: {score}\nStop: {stop}\nTarget: {target}\n\nPortfolio: {portfolio} TL")
+
+    @staticmethod
+    def simple_sell_message(symbol: str, exit_price: Any, pnl: Any, return_pct: Any, reason: str) -> str:
+        icon = "✅" if Decimal(str(pnl)) >= 0 else "🔴"
+        return (f"{icon} <b>PAPER SELL</b>\n\n<b>{escape(symbol)}</b>\nExit: {exit_price}\n"
+                f"PnL: {pnl} TL\nReturn: {return_pct}%\nReason: {escape(reason)}")

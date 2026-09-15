@@ -14,6 +14,7 @@ from app.market_memory.backfill import BackfillService
 from app.market_memory.service import MarketMemoryService
 from app.market_memory.brief import MorningBriefService
 from app.services.telegram import TelegramNotifier
+from app.services.simple_paper import MODE as SIMPLE_MODE
 
 logger = logging.getLogger("EMBEDDED_WORKER")
 
@@ -66,6 +67,8 @@ class EmbeddedWorker:
     def run_cycle(self) -> dict:
         with SessionLocal() as db:
             result = ForwardWorker(db, self.config).run_once()
+            if self.config.operation_mode == SIMPLE_MODE:
+                return {**result, "maintenance": {"status": "NOT_REQUIRED_FOR_SIMPLE_ENTRY"}}
             market_open = BistMarketSession.from_config(self.config).is_open()
             news_interval = (self.config.news_poll_minutes_open if market_open
                 else self.config.news_poll_minutes_closed) * 60

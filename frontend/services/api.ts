@@ -1,4 +1,4 @@
-import type {Analysis,BackfillStatus,Candle,CollectionActivity,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketMemorySymbol,MarketSnapshot,NewsHealth,NewsItem,NewsMetrics,NewsReaction,NewsSourceHealth,Portfolio,Position,ReactionQueueStatus,ScannerRunResponse,ScannerStatus,Snapshot,SnapshotDetail,StrategyHealth,Trade,UnmatchedNews,WatchItem} from "@/types";
+import type {Analysis,BackfillStatus,Candle,CollectionActivity,DataHealth,Decision,EventStudy,ForwardStatus,MarketMemoryHealth,MarketMemorySymbol,MarketSnapshot,NewsHealth,NewsItem,NewsMetrics,NewsReaction,NewsSourceHealth,Portfolio,Position,ReactionQueueStatus,ScannerRunResponse,ScannerStatus,SimplePaperCandidate,SimplePaperStatus,Snapshot,SnapshotDetail,StrategyHealth,Trade,UnmatchedNews,WatchItem} from "@/types";
 const API = "/api";
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -10,6 +10,8 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 export const api = {
   health: () => get<{status:string;mode:string;provider:string;real_orders:boolean}>("/health"),
   portfolio: () => get<Portfolio>("/portfolio"),
+  simplePaperStatus: () => get<SimplePaperStatus>("/simple-paper/status"),
+  simplePaperCandidates: () => get<SimplePaperCandidate[]>("/simple-paper/candidates"),
   history: () => get<Snapshot[]>("/portfolio/history"),
   positions: () => get<Position[]>("/positions"),
   trades: () => get<Trade[]>("/trades"),
@@ -61,6 +63,12 @@ export const api = {
     const r = await fetch(`${API}/scanner/run${query}`, { method: "POST" });
     if (!r.ok) throw new Error("Tarama başlatılamadı");
     return r.json() as Promise<ScannerRunResponse>;
+  },
+  simplePaperRun: async (maxSymbols?:number) => {
+    const query=maxSymbols?`?max_symbols=${maxSymbols}`:"";
+    const r=await fetch(`${API}/simple-paper/run${query}`,{method:"POST"});
+    if(!r.ok)throw new Error("Simple paper taraması başlatılamadı");
+    return r.json() as Promise<{analysis_mode:"LIVE"|"ANALYSIS_ONLY";valid_symbols:number;failed_symbols:number}>;
   },
   saveSettings: async (data: Record<string, number>) => {
     const r = await fetch(`${API}/settings`, {

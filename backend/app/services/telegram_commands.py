@@ -22,6 +22,7 @@ from app.portfolio.portfolio_manager import portfolio_summary
 from app.services.forward_test import active_forward_run, ensure_forward_run, set_paused
 from app.services.system_health import classify_data_health
 from app.services.telegram import TelegramNotifier
+from app.services.simple_paper import MODE as SIMPLE_MODE, simple_status
 
 
 logger = logging.getLogger("TELEGRAM_COMMANDS")
@@ -84,6 +85,19 @@ class TelegramCommandService:
             f"Time: {now.astimezone(session.tz).strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
     def _status(self):
+        if self.config.operation_mode == SIMPLE_MODE:
+            state = simple_status(self.db, self.config)
+            candidate = state.get("best_candidate") or {}
+            position = state.get("open_position") or {}
+            return ("🤖 <b>SIMPLE PAPER STATUS</b>\n\n"
+                f"Mode: {SIMPLE_MODE}\nMarket: {'OPEN' if state['market_open'] else 'CLOSED'}\n"
+                f"State: {'PAUSED' if state['paused'] else 'RUNNING'}\n\n"
+                f"Portfolio: {_money(state['portfolio_value'])}\nCash: {_money(state['cash'])}\n"
+                f"Open position: {escape(position.get('symbol', 'NONE'))}\n"
+                f"Unrealized PnL: {_money(state['unrealized_pnl'])}\nRealized PnL: {_money(state['realized_pnl'])}\n\n"
+                f"Last scan: {state['valid_symbols']} valid / {state['failed_symbols']} failed\n"
+                f"Best: {escape(candidate.get('symbol', 'NONE'))} / {candidate.get('score', 0)}\n"
+                f"Entry threshold: {state['entry_threshold']}\nReal orders: FALSE")
         run = self._run(); scan = self._last_scan(run)
         session = BistMarketSession.from_config(self.config); market_open = session.is_open()
         data = classify_data_health(scan, market_open)
