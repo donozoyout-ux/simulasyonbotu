@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.market_data.market_session import BistMarketSession
-from app.models import DecisionLog, Position, ProcessedCandle, ScanRun
+from app.models import Position, ProcessedCandle, ScanRun
 from app.scanner.bist_scanner import BistScanner
 from app.services.benchmark import fetch_xu100_price
 from app.services.forward_test import ensure_forward_run
@@ -188,49 +188,32 @@ class ForwardWorker:
         now = now or datetime.now(timezone.utc)
         session = BistMarketSession.from_config(self.config)
         market_open = session.is_open(now)
-        run = ensure_forward_run(self.db, self.config, now)
         engine = SimplePaperEngine(self.db, self.config, self.provider)
         position_check = engine.update_positions(now) if market_open else {
             "status": "market_closed", "updated": [], "closed": [], "failures": []}
 
         if not market_open:
-            last = self.db.scalar(select(DecisionLog).where(
-                DecisionLog.run_id == run.run_id, DecisionLog.category == "SIMPLE_PAPER_SCAN"
-            ).order_by(DecisionLog.created_at.desc()).limit(1))
-            last_at = last.created_at.replace(tzinfo=timezone.utc) if last and last.created_at.tzinfo is None else last.created_at if last else None
+            state = engine.store.read(now); last = state.get("last_scan") or {}
+            last_at = datetime.fromisoformat(last["scanned_at"]) if last.get("scanned_at") else None
             due_at = last_at + timedelta(minutes=self.config.off_hours_scan_interval_minutes) if last_at else now
+            local = now.astimezone(session.tz)
+            daily = engine.daily_summary(now) if session.is_trading_day(local.date()) and local.time() >= session.close_time else None
             if now < due_at:
                 return {"status": "off_hours_waiting", "mode": SIMPLE_MODE, "market_open": False,
                         "analysis_mode": "ANALYSIS_ONLY", "entries_enabled": False,
-                        "next_off_hours_scan": due_at, "position_check": position_check}
+                        "next_off_hours_scan": due_at, "position_check": position_check, "daily_summary": daily}
             result = engine.scan(now, market_open=False, allow_entry=False, max_symbols=max_symbols)
             return {**result, "position_check": position_check,
-                    "next_off_hours_scan": now + timedelta(minutes=self.config.off_hours_scan_interval_minutes)}
+                    "next_off_hours_scan": now + timedelta(minutes=self.config.off_hours_scan_interval_minutes),
+                    "daily_summary": daily}
 
         stamp = expected_closed_candle(self.config, now)
         if stamp is None:
             return {"status": "market_open_waiting_for_first_15m_close", "mode": SIMPLE_MODE,
                     "market_open": True, "position_check": position_check}
-        marker = self.db.scalar(select(ProcessedCandle).where(
-            ProcessedCandle.run_id == run.run_id, ProcessedCandle.timeframe == "S15M",
-            ProcessedCandle.closed_candle_timestamp == stamp))
-        if marker and marker.status == "COMPLETE":
+        if engine.store.read(now).get("last_processed_candle") == stamp.isoformat():
             return {"status": "already_processed", "mode": SIMPLE_MODE, "market_open": True,
                     "closed_candle_timestamp": stamp.isoformat(), "position_check": position_check}
-        if not marker:
-            marker = ProcessedCandle(run_id=run.run_id, timeframe="S15M",
-                closed_candle_timestamp=stamp, status="STARTED")
-            self.db.add(marker)
-            try:
-                self.db.commit(); self.db.refresh(marker)
-            except IntegrityError:
-                self.db.rollback()
-                return {"status": "already_processing", "mode": SIMPLE_MODE,
-                        "closed_candle_timestamp": stamp.isoformat(), "position_check": position_check}
-        try:
-            result = engine.scan(now, market_open=True, allow_entry=True, max_symbols=max_symbols)
-            marker.status = "COMPLETE"; marker.error = None; self.db.commit()
-            return {**result, "closed_candle_timestamp": stamp.isoformat(), "position_check": position_check}
-        except Exception as exc:
-            self.db.rollback(); marker = self.db.get(ProcessedCandle, marker.id)
-            marker.status = "FAILED"; marker.error = str(exc); self.db.commit(); raise
+        result = engine.scan(now, market_open=True, allow_entry=True, max_symbols=max_symbols)
+        engine.store.mutate(lambda state: state.update(last_processed_candle=stamp.isoformat()), now)
+        return {**result, "closed_candle_timestamp": stamp.isoformat(), "position_check": position_check}

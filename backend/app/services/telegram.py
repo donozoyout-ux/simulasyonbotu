@@ -120,3 +120,12 @@ class TelegramNotifier:
         icon = "✅" if Decimal(str(pnl)) >= 0 else "🔴"
         return (f"{icon} <b>PAPER SELL</b>\n\n<b>{escape(symbol)}</b>\nExit: {exit_price}\n"
                 f"PnL: {pnl} TL\nReturn: {return_pct}%\nReason: {escape(reason)}")
+
+    @staticmethod
+    def simple_best_message(candidate: dict, market_open: bool, threshold: int) -> str:
+        return ("🏆 <b>EN İYİ ADAY</b>\n\n"
+            f"<b>{escape(str(candidate.get('symbol', 'NONE')))}</b>\nScore: {candidate.get('score', 0)}\n"
+            f"Price: {candidate.get('price', 0)}\n15M: {candidate.get('change_15m_pct', 0):+.2f}%\n"
+            f"1H: {candidate.get('change_1h_pct', 0):+.2f}%\nRSI: {candidate.get('rsi14', 0):.1f}\n"
+            f"Volume: {candidate.get('volume_ratio', 0):.2f}x\n\nThreshold: {threshold}\n"
+            f"Decision: {escape(str(candidate.get('decision', 'SKIP')))}\nMarket: {'OPEN' if market_open else 'CLOSED'}")

@@ -27,6 +27,7 @@ from app.services.historical_candles import candle_read_cache, historical_candle
 from app.services.system_health import classify_data_health, scan_data_status
 from app.services.telegram_commands import telegram_command_runtime_status
 from app.services.simple_paper import SimplePaperEngine, simple_candidates, simple_status
+from app.services.simple_state import get_simple_state
 
 router = APIRouter()
 config = get_settings()
@@ -46,7 +47,17 @@ def current_run(db:Session)->ForwardRun:
 
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
-    db.execute(select(1)); return {"status": "healthy", "mode": config.data_mode.upper(), "provider": config.market_data_provider,
+    try:
+        db.execute(select(1)); database = "OK"
+    except Exception:
+        try: db.rollback()
+        except Exception: pass
+        if config.operation_mode != "SIMPLE_PAPER_V1": raise
+        database = "DEGRADED"
+    if config.operation_mode == "SIMPLE_PAPER_V1": get_simple_state(config).database(database)
+    return {"status": "healthy", "mode": config.operation_mode if config.operation_mode == "SIMPLE_PAPER_V1" else config.data_mode.upper(),
+        "provider": config.market_data_provider, "database": database,
+        "simple_paper": "RUNNING" if config.operation_mode == "SIMPLE_PAPER_V1" else None,
         "real_orders": False,"ai":ai_health(config),"telegram":TelegramNotifier(config).status()}
 
 

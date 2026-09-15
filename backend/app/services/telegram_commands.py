@@ -23,6 +23,7 @@ from app.services.forward_test import active_forward_run, ensure_forward_run, se
 from app.services.system_health import classify_data_health
 from app.services.telegram import TelegramNotifier
 from app.services.simple_paper import MODE as SIMPLE_MODE, simple_status
+from app.services.simple_state import get_simple_state
 
 
 logger = logging.getLogger("TELEGRAM_COMMANDS")
@@ -30,6 +31,7 @@ MAX_MESSAGE = 3900
 COMMANDS = [
     ("start", "Botu başlat / yardım"), ("status", "Sistem durumu"),
     ("portfolio", "Portföy"), ("positions", "Açık pozisyonlar"),
+    ("best", "En iyi simple aday"), ("candidate", "En iyi simple aday"),
     ("watchlist", "Takip listesi"), ("scanner", "Son tarama"),
     ("health", "Sistem sağlığı"), ("news", "Son haberler"),
     ("alerts", "Bildirim ayarları"), ("pause", "Paper trading durdur"),
@@ -89,15 +91,15 @@ class TelegramCommandService:
             state = simple_status(self.db, self.config)
             candidate = state.get("best_candidate") or {}
             position = state.get("open_position") or {}
-            return ("🤖 <b>SIMPLE PAPER STATUS</b>\n\n"
-                f"Mode: {SIMPLE_MODE}\nMarket: {'OPEN' if state['market_open'] else 'CLOSED'}\n"
-                f"State: {'PAUSED' if state['paused'] else 'RUNNING'}\n\n"
+            return ("🤖 <b>SIMPLE PAPER</b>\n\n"
+                f"Engine: {'PAUSED' if state['paused'] else 'RUNNING'}\nMarket: {'OPEN' if state['market_open'] else 'CLOSED'}\n"
+                f"DB: {state['database_status']}\nState: {state['state_backend']}\n\n"
                 f"Portfolio: {_money(state['portfolio_value'])}\nCash: {_money(state['cash'])}\n"
-                f"Open position: {escape(position.get('symbol', 'NONE'))}\n"
-                f"Unrealized PnL: {_money(state['unrealized_pnl'])}\nRealized PnL: {_money(state['realized_pnl'])}\n\n"
-                f"Last scan: {state['valid_symbols']} valid / {state['failed_symbols']} failed\n"
-                f"Best: {escape(candidate.get('symbol', 'NONE'))} / {candidate.get('score', 0)}\n"
-                f"Entry threshold: {state['entry_threshold']}\nReal orders: FALSE")
+                f"Position: {escape(position.get('symbol', 'NONE'))}\n\n"
+                f"Best: {escape(candidate.get('symbol', 'NONE'))} {candidate.get('score', 0)}\n"
+                f"Threshold: {state['entry_threshold']}\nTrades today: {state['trades_today']} / {state['max_trades_per_day']}\n"
+                f"Daily PnL: {state['daily_realized_pnl']:+.2f} TL\n"
+                f"Loss brake: {'ACTIVE' if state['entry_block_reason']=='DAILY_LOSS_BRAKE' else 'OK'}\n\nReal orders: FALSE")
         run = self._run(); scan = self._last_scan(run)
         session = BistMarketSession.from_config(self.config); market_open = session.is_open()
         data = classify_data_health(scan, market_open)
@@ -117,6 +119,12 @@ class TelegramCommandService:
             f"Last scan:\n{scan_text}\n\nAI execution: FALSE\nReal orders: FALSE")
 
     def _portfolio(self):
+        if self.config.operation_mode == SIMPLE_MODE:
+            state = simple_status(None, self.config)
+            return ("💼 <b>SIMPLE PAPER PORTFOLIO</b>\n\n"
+                f"Initial: {_money(self.config.initial_balance)}\nCash: {_money(state['cash'])}\n"
+                f"Portfolio value: {_money(state['portfolio_value'])}\nRealized PnL: {_money(state['realized_pnl'])}\n"
+                f"Unrealized PnL: {_money(state['unrealized_pnl'])}\nTrades today: {state['trades_today']}")
         run = self._run(); summary = portfolio_summary(self.db, self.config.initial_balance)
         trades = self.db.scalar(select(func.count()).select_from(Trade).where(Trade.run_id == run.run_id)) or 0
         return ("💼 <b>PAPER PORTFOLIO</b>\n\n"
@@ -126,6 +134,12 @@ class TelegramCommandService:
             f"Open positions: {summary['open_positions']}\nClosed trades: {trades}")
 
     def _positions(self):
+        if self.config.operation_mode == SIMPLE_MODE:
+            position = get_simple_state(self.config).read().get("open_position")
+            if not position: return "📭 Açık simple paper pozisyon yok."
+            return ("📌 <b>AÇIK SIMPLE POZİSYON</b>\n\n"
+                f"<b>{escape(position['symbol'])}</b>\nLot: {position['quantity']}\nEntry: {position['entry_price']}\n"
+                f"Current: {position['current_price']}\nStop: {position['stop']}\nTarget: {position['target']}\nScore: {position['score']}")
         run = self._run()
         rows = self.db.scalars(select(Position).where(Position.run_id == run.run_id, Position.status == "OPEN")
             .order_by(desc(Position.opened_at)).limit(10)).all()
@@ -194,17 +208,28 @@ class TelegramCommandService:
             f"Off-hours signal alerts: {_bool(self.config.telegram_off_hours_analysis)}\n"
             f"Commands: {_bool(self.config.telegram_commands_enabled)}")
 
+    def _best(self):
+        state = simple_status(None, self.config); candidate = state.get("best_candidate")
+        if not candidate: return "🏆 Henüz cached simple aday yok."
+        return TelegramNotifier.simple_best_message(candidate, state["market_open"], state["entry_threshold"])
+
     def dispatch(self, command: str) -> str:
         handlers = {"start": self._help, "help": self._help, "ping": self._ping,
             "status": self._status, "portfolio": self._portfolio, "positions": self._positions,
             "watchlist": self._watchlist, "scanner": self._scanner, "health": self._health,
-            "news": self._news, "alerts": self._alerts}
+            "news": self._news, "alerts": self._alerts, "best": self._best, "candidate": self._best}
         if command == "pause":
+            if self.config.operation_mode == SIMPLE_MODE:
+                get_simple_state(self.config).mutate(lambda state: state.update(paused=True))
+                return "⏸ <b>SIMPLE PAPER PAUSED</b>"
             run = set_paused(self.db, self.config, True, create_if_missing=False)
             if run is None:
                 return "⚠️ Aktif paper trading run bulunamadı. Yeni run oluşturulmadı."
             return f"⏸ <b>PAPER TRADING PAUSED</b>\n\nRun: {escape(run.run_id)}\nCollectors remain active."
         if command == "resume":
+            if self.config.operation_mode == SIMPLE_MODE:
+                get_simple_state(self.config).mutate(lambda state: state.update(paused=False))
+                return "▶️ <b>SIMPLE PAPER RESUMED</b>"
             run = set_paused(self.db, self.config, False, create_if_missing=False)
             if run is None:
                 return "⚠️ Aktif paper trading run bulunamadı. Yeni run oluşturulmadı."
@@ -224,20 +249,34 @@ class TelegramCommandService:
             return None
         command = text.split()[0][1:].split("@", 1)[0].lower()
         reason = f"UPDATE:{update_id}"
-        if self.db.scalar(select(DecisionLog.id).where(
-            DecisionLog.category == "TELEGRAM_COMMAND", DecisionLog.reason == reason).limit(1)):
-            return None
-        active = active_forward_run(self.db)
-        self.db.add(DecisionLog(category="TELEGRAM_COMMAND", decision=command[:32].upper(), reason=reason,
-            details={"authorized": True}, run_id=active.run_id if active else None))
+        if self.config.operation_mode == SIMPLE_MODE and command in {
+            "status", "portfolio", "positions", "best", "candidate", "pause", "resume", "ping", "help", "start"
+        }:
+            try: return self.dispatch(command)[:MAX_MESSAGE]
+            except Exception as exc:
+                logger.warning("simple_telegram_command_failed command=%s type=%s", command, type(exc).__name__)
+                return "⚠️ Komut geçici olarak işlenemedi."
+        db_available = True
         try:
-            response = self.dispatch(command)[:MAX_MESSAGE]
-            self.db.commit()
-            return response
+            if self.db.scalar(select(DecisionLog.id).where(
+                DecisionLog.category == "TELEGRAM_COMMAND", DecisionLog.reason == reason).limit(1)): return None
+        except Exception:
+            db_available = False
+            try: self.db.rollback()
+            except Exception: pass
+        try: response = self.dispatch(command)[:MAX_MESSAGE]
         except Exception as exc:
-            self.db.rollback()
             logger.warning("telegram_command_failed command=%s type=%s", command, type(exc).__name__)
             return "⚠️ Komut geçici olarak işlenemedi."
+        if db_available:
+            try:
+                active = active_forward_run(self.db)
+                self.db.add(DecisionLog(category="TELEGRAM_COMMAND", decision=command[:32].upper(), reason=reason,
+                    details={"authorized": True}, run_id=active.run_id if active else None)); self.db.commit()
+            except Exception:
+                try: self.db.rollback()
+                except Exception: pass
+        return response
 
 
 class TelegramCommandPoller:

@@ -20,6 +20,14 @@ services:
         value: "1"
       - key: SIMPLE_SYMBOL_LIMIT
         value: "28"
+      - key: SIMPLE_COOLDOWN_MINUTES
+        value: "60"
+      - key: SIMPLE_MAX_TRADES_PER_DAY
+        value: "5"
+      - key: SIMPLE_DAILY_LOSS_LIMIT_PCT
+        value: "0.02"
+      - key: SIMPLE_STATE_PATH
+        value: /tmp/simple-paper-state.json
       - key: INITIAL_BALANCE
         value: "5000"
       - key: LIVE_STRATEGY_VERSION

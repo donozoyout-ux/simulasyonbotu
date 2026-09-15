@@ -53,6 +53,10 @@ class AppSettings(BaseSettings):
     simple_entry_score: int = 60
     simple_max_open_positions: int = 1
     simple_symbol_limit: int = 28
+    simple_cooldown_minutes: int = 60
+    simple_max_trades_per_day: int = 5
+    simple_daily_loss_limit_pct: Decimal = Decimal("0.02")
+    simple_state_path: str = "/tmp/simple-paper-state.json"
     worker_poll_seconds: int = 20
     embedded_worker_enabled: bool = True
     market_open_poll_seconds: int = 300

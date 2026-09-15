@@ -268,6 +268,9 @@ export type SimplePaperStatus = {
   mode:"SIMPLE_PAPER_V1";market_open:boolean;portfolio_value:number;cash:number;equity:number;
   unrealized_pnl:number;realized_pnl:number;last_scan_at?:string;valid_symbols:number;failed_symbols:number;
   best_candidate?:SimplePaperCandidate;entry_threshold:60;real_orders:false;paused:boolean;
+  database_required:false;database_status:"OK"|"DEGRADED"|"UNAVAILABLE";state_backend:"DATABASE"|"LOCAL_JSON"|"MEMORY";
+  cooldown_minutes:number;max_trades_per_day:number;trades_today:number;daily_loss_limit_pct:number;
+  daily_loss_limit_tl:number;daily_realized_pnl:number;entry_allowed:boolean;entry_block_reason?:string;
   open_position?:{symbol:string;quantity:number;entry_price:number;current_price:number;stop:number;target:number;unrealized_pnl:number};
 };
 
